@@ -7,7 +7,7 @@ from ANNIEMUSIC import LOGGER
 # Ambil dari ENV Heroku (LOGGER_ID)
 LOG_GROUP_ID = int(os.getenv("LOGGER_ID", 0))
 
-# 📸 Header image sama seperti di report.py
+# 📸 Header image (bisa diganti kalau mau)
 HEADER_IMAGE = (
     "https://raw.githubusercontent.com/mmahsunaz-eng/Onlyforachabot/"
     "623909aba0de9f88ed8756c71ab53ac7af878e35/"
@@ -16,6 +16,7 @@ HEADER_IMAGE = (
 
 # 🕒 Variabel global untuk stopwatch
 maintenance_start_time = None
+auto_update_task = None  # untuk menyimpan task auto-update
 
 
 # 🧮 Hitung durasi maintenance
@@ -30,10 +31,32 @@ def get_maintenance_duration():
     return total_seconds, text
 
 
+# 🔁 Kirim update durasi tiap 10 menit
+async def auto_update_log(client):
+    global maintenance_start_time
+    if not LOG_GROUP_ID:
+        return
+
+    while maintenance_start_time:
+        total_seconds, duration_text = get_maintenance_duration()
+        caption = (
+            "🕓 <b>Update Durasi Maintenance</b>\n\n"
+            f"⏱️ <b>Berjalan selama:</b> <code>{duration_text}</code>\n"
+            f"🪪 <b>Logger:</b> <code>{LOG_GROUP_ID}</code>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            "💠 <i>Auto update setiap 10 menit oleh sistem</i>"
+        )
+        try:
+            await client.send_message(LOG_GROUP_ID, caption)
+        except Exception as e:
+            LOGGER("ANNIEMUSIC").warning(f"Gagal kirim auto-update: {e}")
+        await asyncio.sleep(600)  # 10 menit
+
+
 # ⚙️ Command: /maintenance enable | /maintenance disable
 @Client.on_message(filters.command(["maintenance", "maint"]))
 async def maintenance_handler(client, message):
-    global maintenance_start_time
+    global maintenance_start_time, auto_update_task
 
     if len(message.command) < 2:
         return await message.reply_text(
@@ -51,6 +74,9 @@ async def maintenance_handler(client, message):
 
     # 🟢 ENABLE
     if action == "enable":
+        if maintenance_start_time:
+            return await message.reply_text("⚠️ Maintenance sudah aktif sebelumnya!")
+
         maintenance_start_time = datetime.now(timezone(timedelta(hours=7)))
         LOGGER("ANNIEMUSIC").info("🟢 Maintenance mode ENABLED — Stopwatch dimulai.")
 
@@ -69,7 +95,10 @@ async def maintenance_handler(client, message):
         except Exception as e:
             LOGGER("ANNIEMUSIC").warning(f"Gagal kirim log enable: {e}")
 
-        return await message.reply_text("🟢 Maintenance diaktifkan.\n🧾 Laporan dikirim ke grup log.")
+        # Jalankan auto update durasi
+        auto_update_task = asyncio.create_task(auto_update_log(client))
+
+        return await message.reply_text("🟢 Maintenance diaktifkan.\n🧾 Laporan & auto stopwatch dimulai.")
 
     # 🔴 DISABLE
     elif action == "disable":
@@ -78,7 +107,7 @@ async def maintenance_handler(client, message):
 
         total_seconds, duration_text = get_maintenance_duration()
 
-        # 🎨 Tentukan warna status otomatis
+        # 🎨 Tentukan kategori
         if total_seconds < 3600:
             color_icon = "🟢"
             color_text = "Normal"
@@ -101,12 +130,16 @@ async def maintenance_handler(client, message):
             "💠 <b>Diterima oleh:</b> ᴏꜰꜰɪᴄɪᴀʟ 「 Oɴʟʏғᴏʀᴀᴄʜᴀ ✘ ʙᴏᴛ 」"
         )
 
+        # Hentikan stopwatch & auto update
+        maintenance_start_time = None
+        if auto_update_task:
+            auto_update_task.cancel()
+
         try:
             await client.send_photo(LOG_GROUP_ID, photo=HEADER_IMAGE, caption=caption)
         except Exception as e:
             LOGGER("ANNIEMUSIC").warning(f"Gagal kirim log disable: {e}")
 
-        maintenance_start_time = None
         LOGGER("ANNIEMUSIC").info(
             f"{color_icon} Maintenance mode DISABLED — Durasi {duration_text} ({color_text})"
         )
