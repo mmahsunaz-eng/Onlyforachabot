@@ -1,4 +1,4 @@
-import os
+hereimport os
 import asyncio
 import random
 from datetime import datetime
@@ -10,20 +10,20 @@ from pymongo import MongoClient
 # === KONFIGURASI ===
 LOGGER_ID = int(os.environ.get("LOGGER_ID", "-1001234567890"))  # 💬 Grup log bot kamu
 MONGO_URL = os.environ.get("MONGO_DB_URI")
-DB_NAME = "AnnieX"
+DB_NAME = "Annie"
 COLLECTION_NAME = "chats"
 
-# FOTO DEFAULT UNTUK PENGUMUMAN
+# === FOTO DEFAULT UNTUK PENGUMUMAN ===
 ANNOUNCE_PHOTO_URL = (
-    "ANNOUNCE_PHOTO_URL = (
-    "https://raw.githubusercontent.com/mmahsunaz-eng/Onlyforachabot/623909aba0de9f88ed8756c71ab53ac7af878e35/ANNIEMUSIC/assets/"file_00000000e5e462088641d9a6402214ca.png"
+    "https://raw.githubusercontent.com/mmahsunaz-eng/Onlyforachabot/"
+    "623909aba0de9f88ed8756c71ab53ac7af878e35/ANNIEMUSIC/assets/"
+    "file_00000000e5e462088641d9a6402214ca.png"
 )
 
 # === SETUP MONGO ===
 mongo = MongoClient(MONGO_URL)
 db = mongo[DB_NAME]
 chats_col = db[COLLECTION_NAME]
-
 
 # === SIMPAN PESAN SEMENTARA (untuk konfirmasi kirim) ===
 pending_announcements = {}
