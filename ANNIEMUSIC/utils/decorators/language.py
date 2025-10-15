@@ -7,12 +7,22 @@ from strings import get_string
 
 def language(mystic):
     async def wrapper(_, message, **kwargs):
-        if await is_maintenance() is False:
+        # 🔧 Perbaikan logika & desain pesan maintenance
+        if await is_maintenance() is True:
             if message.from_user.id not in SUDOERS:
                 return await message.reply_text(
-                    text=f"{app.mention} ɪs ᴜɴᴅᴇʀ ᴍᴀɪɴᴛᴇɴᴀɴᴄᴇ, ᴠɪsɪᴛ <a href={SUPPORT_CHAT}>sᴜᴘᴘᴏʀᴛ ᴄʜᴀᴛ</a> ғᴏʀ ᴋɴᴏᴡɪɴɢ ᴛʜᴇ ʀᴇᴀsᴏɴ.",
+                    text=(
+                        "🚨 <b>ＰＥＲＨＡＴＩＡＮ</b> 🚨\n\n"
+                        "Bot sedang dalam mode <b>pemeliharaan</b>.\n"
+                        "Selama proses ini berlangsung, semua perintah dinonaktifkan.\n\n"
+                        f"💠 <b>Bot:</b> {app.mention}\n"
+                        f"💬 <b>Dukungan:</b> <a href={SUPPORT_CHAT}>Klik di sini</a>\n"
+                        "━━━━━━━━━━━━━━━━━━━━━━\n"
+                        "🙏 Terima kasih atas pengertiannya."
+                    ),
                     disable_web_page_preview=True,
                 )
+
         try:
             await message.delete()
         except:
@@ -30,10 +40,11 @@ def language(mystic):
 
 def languageCB(mystic):
     async def wrapper(_, CallbackQuery, **kwargs):
-        if await is_maintenance() is False:
+        if await is_maintenance() is True:
             if CallbackQuery.from_user.id not in SUDOERS:
                 return await CallbackQuery.answer(
-                    f"{app.mention} ɪs ᴜɴᴅᴇʀ ᴍᴀɪɴᴛᴇɴᴀɴᴄᴇ, ᴠɪsɪᴛ sᴜᴘᴘᴏʀᴛ ᴄʜᴀᴛ ғᴏʀ ᴋɴᴏᴡɪɴɢ ᴛʜᴇ ʀᴇᴀsᴏɴ.",
+                    f"{app.mention} sedang dalam mode pemeliharaan. "
+                    "Coba lagi nanti setelah bot kembali normal.",
                     show_alert=True,
                 )
         try:
