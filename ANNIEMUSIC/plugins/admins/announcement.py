@@ -53,17 +53,15 @@ async def announce_preview(client, message):
     tanggal_str = f"{now.day} {bulan[now.month]} {now.year}"
 
     caption = (
-        "```\n"
-        "           🚨⚠️  ＰＥＮＧＵＭＵＭＡＮ ⚠️🚨\n"
-        "```\n"
-        "📣 **𝐏𝐄𝐌𝐁𝐄𝐑𝐈𝐓𝐀𝐇𝐔𝐀𝐍 𝐊𝐄𝐏𝐀𝐃𝐀 𝐏𝐀𝐑𝐀 𝐔𝐒𝐄𝐑 𝐁𝐎𝐓**\n\n"
-        f"📅 **{tanggal_str}**\n\n"
+        "🚨⚠️ <b><u>P E N G U M U M A N</u></b> ⚠️🚨\n\n"
+        "📢 <b>PEMBERITAHUAN KEPADA PARA USER BOT</b>\n\n"
+        f"📅 <b>{tanggal_str}</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"💬 {user_text}\n"
+        f"💬 <i>{user_text}</i>\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "💠 **Diterbitkan oleh:** ᴏꜰꜰɪᴄɪᴀʟ 「 Oɴʟʏғᴏʀᴀᴄʜᴀ ✘ ʙᴏᴛ 」\n"
+        "💠 <b>Diterbitkan oleh:</b> <b>ᴏꜰꜰɪᴄɪᴀʟ 「 Oɴʟʏғᴏʀᴀᴄʜᴀ ✘ ʙᴏᴛ 」</b>\n"
         "💎 Tetap semangat dan terus nikmati musik bersama kami 🎶"
-    )
+)
 
     pending_announcements[message.from_user.id] = caption
 
