@@ -16,9 +16,7 @@ COLLECTION_NAME = "chats"
 # FOTO DEFAULT UNTUK PENGUMUMAN
 ANNOUNCE_PHOTO_URL = (
     "ANNOUNCE_PHOTO_URL = (
-    "https://raw.githubusercontent.com/mmahsunaz-eng/Onlyforachabot/"
-    "623909aba0de9f88ed8756c71ab53ac7af878e35/ANNIEMUSIC/assets/"
-    "file_00000000e5e462088641d9a6402214ca.png"
+    "https://raw.githubusercontent.com/mmahsunaz-eng/Onlyforachabot/623909aba0de9f88ed8756c71ab53ac7af878e35/ANNIEMUSIC/assets/"file_00000000e5e462088641d9a6402214ca.png"
 )
 
 # === SETUP MONGO ===
