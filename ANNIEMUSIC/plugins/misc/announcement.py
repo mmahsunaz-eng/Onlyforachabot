@@ -1,4 +1,4 @@
-import os
+hereimport os
 import asyncio
 import random
 from datetime import datetime
@@ -13,12 +13,15 @@ MONGO_URL = os.environ.get("MONGO_DB_URI")
 DB_NAME = "Annie"
 COLLECTION_NAME = "chats"
 
-# === FOTO DEFAULT UNTUK PENGUMUMAN ===
+# Ganti dengan user ID kamu (pakai @userinfobot)
+SUDO_USERS = [7633980954]
+
+# FOTO DEFAULT UNTUK PENGUMUMAN
 ANNOUNCE_PHOTO_URL = (
-    "https://raw.githubusercontent.com/mmahsunaz-eng/Onlyforachabot/"
-    "623909aba0de9f88ed8756c71ab53ac7af878e35/ANNIEMUSIC/assets/"
-    "file_00000000e5e462088641d9a6402214ca.png"
-)
+"https://raw.githubusercontent.com/mmahsunaz-eng/Onlyforachabot/"
+"623909aba0de9f88ed8756c71ab53ac7af878e35/ANNIEMUSIC/assets/"
+"file_00000000e5e462088641d9a6402214ca.png"
+) 
 
 # === SETUP MONGO ===
 mongo = MongoClient(MONGO_URL)
@@ -30,8 +33,11 @@ pending_announcements = {}
 
 
 # === FUNGSI PENGUMUMAN ===
-@Client.on_message(filters.command("announce") & filters.chat(LOGGER_ID))
+@Client.on_message(filters.command("announce") & ~filters.edited)
 async def announce_preview(_, message):
+    if message.from_user.id not in SUDO_USERS:
+        return await message.reply_text("🚫 Kamu tidak memiliki izin untuk menggunakan perintah ini.")
+
     if len(message.command) < 2:
         return await message.reply_text("❗ Gunakan format:\n`/announce <pesan>`")
 
@@ -58,7 +64,6 @@ async def announce_preview(_, message):
         "💎 Tetap semangat dan terus nikmati musik bersama kami 🎶"
     )
 
-    # simpan pengumuman ke memory sementara
     pending_announcements[message.from_user.id] = caption
 
     keyboard = InlineKeyboardMarkup(
@@ -70,8 +75,7 @@ async def announce_preview(_, message):
         ]
     )
 
-    await _.send_photo(
-        LOGGER_ID,
+    await message.reply_photo(
         photo=ANNOUNCE_PHOTO_URL,
         caption=caption,
         reply_markup=keyboard,
@@ -79,7 +83,7 @@ async def announce_preview(_, message):
 
 
 # === HANDLER KONFIRMASI ===
-@Client.on_callback_query(filters.chat(LOGGER_ID))
+@Client.on_callback_query(filters.regex("^(confirm_send|cancel_send)$"))
 async def confirm_announcement(_, callback_query):
     user_id = callback_query.from_user.id
 
@@ -102,6 +106,7 @@ async def confirm_announcement(_, callback_query):
         total = len(all_chats)
 
         if total == 0:
+            del pending_announcements[user_id]
             return await callback_query.message.edit_caption(
                 caption + "\n\n⚠️ Tidak ada grup terdaftar di database."
             )
@@ -145,7 +150,6 @@ async def confirm_announcement(_, callback_query):
         except Exception:
             await _.send_message(LOGGER_ID, f"✅ Broadcast selesai. Berhasil: {sent} | Gagal: {failed}")
 
-        # hapus dari pending
         del pending_announcements[user_id]
 
 
@@ -155,3 +159,16 @@ async def auto_add_group(_, message):
     chat_id = message.chat.id
     if chat_id < 0:
         chats_col.update_one({"chat_id": chat_id}, {"$set": {"chat_id": chat_id}}, upsert=True)
+
+
+# === HELP MENU ===
+__MODULE__ = "Admin"
+__HELP__ = """
+**📣 Perintah Admin:**
+
+/announce <pesan>  
+Kirim pengumuman ke semua grup yang terdaftar di database bot.
+
+Contoh:
+`/announce Bot telah diupdate ke versi baru 🚀`
+"""
