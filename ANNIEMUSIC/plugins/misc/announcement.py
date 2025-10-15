@@ -13,28 +13,28 @@ MONGO_URL = os.environ.get("MONGO_DB_URI")
 DB_NAME = "Annie"
 COLLECTION_NAME = "chats"
 
-# Ganti dengan user ID kamu (pakai @userinfobot)
+# Ganti dengan user ID kamu (gunakan @userinfobot)
 SUDO_USERS = [7633980954]
 
 # FOTO DEFAULT UNTUK PENGUMUMAN
 ANNOUNCE_PHOTO_URL = (
-"https://raw.githubusercontent.com/mmahsunaz-eng/Onlyforachabot/"
-"623909aba0de9f88ed8756c71ab53ac7af878e35/ANNIEMUSIC/assets/"
-"file_00000000e5e462088641d9a6402214ca.png"
-) 
+    "https://raw.githubusercontent.com/mmahsunaz-eng/Onlyforachabot/"
+    "623909aba0de9f88ed8756c71ab53ac7af878e35/ANNIEMUSIC/assets/"
+    "file_00000000e5e462088641d9a6402214ca.png"
+)
 
 # === SETUP MONGO ===
 mongo = MongoClient(MONGO_URL)
 db = mongo[DB_NAME]
 chats_col = db[COLLECTION_NAME]
 
-# === SIMPAN PESAN SEMENTARA (untuk konfirmasi kirim) ===
+# === SIMPAN PESAN SEMENTARA ===
 pending_announcements = {}
 
 
 # === FUNGSI PENGUMUMAN ===
-@Client.on_message(filters.command("announce") & ~filters.edited)
-async def announce_preview(_, message):
+@Client.on_message(filters.command("announce"))
+async def announce_preview(client, message):
     if message.from_user.id not in SUDO_USERS:
         return await message.reply_text("🚫 Kamu tidak memiliki izin untuk menggunakan perintah ini.")
 
@@ -84,7 +84,7 @@ async def announce_preview(_, message):
 
 # === HANDLER KONFIRMASI ===
 @Client.on_callback_query(filters.regex("^(confirm_send|cancel_send)$"))
-async def confirm_announcement(_, callback_query):
+async def confirm_announcement(client, callback_query):
     user_id = callback_query.from_user.id
 
     if user_id not in pending_announcements:
@@ -111,12 +111,24 @@ async def confirm_announcement(_, callback_query):
                 caption + "\n\n⚠️ Tidak ada grup terdaftar di database."
             )
 
-        status_msg = await _.send_message(LOGGER_ID, f"📢 Mengirim ke {total} grup...")
+        # 🧾 LOG AWAL
+        admin_name = callback_query.from_user.mention
+        start_time = datetime.now().strftime("%H:%M:%S")
+        await client.send_message(
+            LOGGER_ID,
+            f"📢 **Broadcast dimulai**\n"
+            f"👤 Oleh: {admin_name}\n"
+            f"🕒 Waktu: {start_time}\n"
+            f"💬 Total grup: {total}\n\n"
+            f"Pesan:\n{caption[:1000]}"
+        )
+
+        status_msg = await client.send_message(LOGGER_ID, f"📢 Mengirim ke {total} grup...")
 
         for index, chat in enumerate(all_chats, start=1):
             chat_id = chat["chat_id"]
             try:
-                await _.send_photo(chat_id, photo=ANNOUNCE_PHOTO_URL, caption=caption)
+                await client.send_photo(chat_id, photo=ANNOUNCE_PHOTO_URL, caption=caption)
                 sent += 1
             except FloodWait as e:
                 await asyncio.sleep(e.value)
@@ -140,22 +152,33 @@ async def confirm_announcement(_, callback_query):
 
             await asyncio.sleep(random.uniform(1.2, 2.5))
 
+        # 🧾 LOG SELESAI
+        end_time = datetime.now().strftime("%H:%M:%S")
         try:
             await status_msg.edit_text(
                 f"✅ **Broadcast selesai!**\n\n"
                 f"📬 Berhasil: {sent}\n"
                 f"❌ Gagal: {failed}\n"
-                f"🕒 Selesai: {datetime.now().strftime('%H:%M:%S')}"
+                f"🕒 Selesai: {end_time}"
             )
         except Exception:
-            await _.send_message(LOGGER_ID, f"✅ Broadcast selesai. Berhasil: {sent} | Gagal: {failed}")
+            pass
+
+        await client.send_message(
+            LOGGER_ID,
+            f"✅ **Broadcast selesai!**\n"
+            f"👤 Oleh: {callback_query.from_user.mention}\n"
+            f"📬 Berhasil: {sent}\n"
+            f"❌ Gagal: {failed}\n"
+            f"🕒 Waktu selesai: {end_time}"
+        )
 
         del pending_announcements[user_id]
 
 
 # === AUTO ADD GRUP ===
 @Client.on_message(filters.new_chat_members)
-async def auto_add_group(_, message):
+async def auto_add_group(client, message):
     chat_id = message.chat.id
     if chat_id < 0:
         chats_col.update_one({"chat_id": chat_id}, {"$set": {"chat_id": chat_id}}, upsert=True)
