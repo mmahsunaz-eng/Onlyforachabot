@@ -8,7 +8,7 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pymongo import MongoClient
 
 # === KONFIGURASI ===
-LOGGER_ID = int(os.environ.get("LOGGER_ID", "-1001234567890"))  # 💬 Grup log bot kamu
+LOGGER_ID = int(os.environ.get("LOGGER_ID", "-4812620726"))  # 💬 Grup log bot kamu
 MONGO_URL = os.environ.get("MONGO_DB_URI")
 DB_NAME = "Annie"
 COLLECTION_NAME = "chats"
