@@ -152,4 +152,4 @@ async def maintenance_handler(client: Client, message):
         )
 
     else:
-        await message.reply_text("❌ Gunakan hanya `enable` atau `disable`.")sable`.")
+        await message.reply_text("❌ Gunakan hanya `enable` atau `disable`.")
