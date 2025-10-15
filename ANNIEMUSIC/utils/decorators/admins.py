@@ -19,15 +19,19 @@ from strings import get_string
 from ..formatters import int_to_alpha
 
 
+# ================================
+# DECORATOR 1: AdminRightsCheck
+# ================================
 def AdminRightsCheck(mystic):
     async def wrapper(client, message):
-        # 🌐 Maintenance Mode Check
-        if await is_maintenance() is False:
+        # 🌐 Maintenance Mode Check (FIXED)
+        if await is_maintenance():
             if message.from_user.id not in SUDOERS:
                 text = (
-                    "🚧⚙️ <b>ＭＡＩＮＴＥＮＡＮＣＥ ＭＯＤＥ</b> ⚙️🚧\n\n"
-                    "📢 <b>Bot saat ini sedang dalam mode pemeliharaan.</b>\n"
-                    "Selama proses ini berlangsung, beberapa fitur akan dinonaktifkan.\n\n"
+                    "🚨⚠️ <b>ＰＥＲＨＡＴＩＡＮ</b> ⚠️🚨\n\n"
+                    "<b>Bot Sedang Dalam Mode Pemeliharaan!</b>\n\n"
+                    "🧰 <b>Beberapa fitur sementara dinonaktifkan</b>\n"
+                    "Mohon bersabar hingga proses perbaikan selesai.\n\n"
                     f"💠 <b>Bot:</b> {app.mention}\n"
                     f"💬 <b>Dukungan:</b> <a href={SUPPORT_CHAT}>Klik di sini</a>\n"
                     "━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -108,14 +112,19 @@ def AdminRightsCheck(mystic):
     return wrapper
 
 
+# ================================
+# DECORATOR 2: AdminActual
+# ================================
 def AdminActual(mystic):
     async def wrapper(client, message):
-        if await is_maintenance() is False:
+        # 🌐 Maintenance Mode Check (FIXED)
+        if await is_maintenance():
             if message.from_user.id not in SUDOERS:
                 text = (
-                    "🚧⚙️ <b>ＭＡＩＮＴＥＮＡＮＣＥ ＭＯＤＥ</b> ⚙️🚧\n\n"
-                    "📢 <b>Bot saat ini sedang dalam mode pemeliharaan.</b>\n"
-                    "Selama proses ini berlangsung, beberapa fitur akan dinonaktifkan.\n\n"
+                    "🚨⚠️ <b>ＰＥＲＨＡＴＩＡＮ</b> ⚠️🚨\n\n"
+                    "<b>Bot Sedang Dalam Mode Pemeliharaan!</b>\n\n"
+                    "🧰 <b>Beberapa fitur sementara dinonaktifkan</b>\n"
+                    "Mohon bersabar hingga proses perbaikan selesai.\n\n"
                     f"💠 <b>Bot:</b> {app.mention}\n"
                     f"💬 <b>Dukungan:</b> <a href={SUPPORT_CHAT}>Klik di sini</a>\n"
                     "━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -154,13 +163,17 @@ def AdminActual(mystic):
     return wrapper
 
 
+# ================================
+# DECORATOR 3: ActualAdminCB
+# ================================
 def ActualAdminCB(mystic):
     async def wrapper(client, CallbackQuery):
-        if await is_maintenance() is False:
+        # 🌐 Maintenance Mode Check (FIXED)
+        if await is_maintenance():
             if CallbackQuery.from_user.id not in SUDOERS:
                 text = (
-                    "🚧⚙️ <b>ＭＡＩＮＴＥＮＡＮＣＥ ＭＯＤＥ</b> ⚙️🚧\n\n"
-                    "📢 <b>Bot saat ini sedang dalam mode pemeliharaan.</b>\n"
+                    "🚨⚠️ <b>ＰＥＲＨＡＴＩＡＮ</b> ⚠️🚨\n\n"
+                    "<b>Bot Sedang Dalam Mode Pemeliharaan!</b>\n\n"
                     f"💬 <b>Dukungan:</b> <a href={SUPPORT_CHAT}>Klik di sini</a>\n"
                     "━━━━━━━━━━━━━━━━━━━━━━\n"
                     "🙏 <i>Terima kasih atas pengertiannya.</i>"
