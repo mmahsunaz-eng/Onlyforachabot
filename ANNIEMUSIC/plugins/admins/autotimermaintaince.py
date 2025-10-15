@@ -1,7 +1,7 @@
 import os
 import asyncio
 from datetime import datetime, timezone, timedelta
-from pyrogram import Client, filters
+from pyrogram import Client
 from ANNIEMUSIC import LOGGER
 
 # Ambil dari ENV Heroku (LOGGER_ID)
@@ -53,9 +53,8 @@ async def auto_update_log(client):
         await asyncio.sleep(600)  # 10 menit
 
 
-# ⚙️ Command: /maintenance enable | /maintenance disable
-@Client.on_message(filters.command(["maintenance", "maint"]))
-async def maintenance_handler(client, message):
+# ⚙️ Fungsi utama: maintenance_handler (tanpa decorator)
+async def maintenance_handler(client: Client, message):
     global maintenance_start_time, auto_update_task
 
     if len(message.command) < 2:
@@ -98,12 +97,16 @@ async def maintenance_handler(client, message):
         # Jalankan auto update durasi
         auto_update_task = asyncio.create_task(auto_update_log(client))
 
-        return await message.reply_text("🟢 Maintenance diaktifkan.\n🧾 Laporan & auto stopwatch dimulai.")
+        return await message.reply_text(
+            "🟢 Maintenance diaktifkan.\n🧾 Laporan & auto stopwatch dimulai."
+        )
 
     # 🔴 DISABLE
     elif action == "disable":
         if not maintenance_start_time:
-            return await message.reply_text("❌ Stopwatch belum berjalan. Aktifkan dulu maintenance mode.")
+            return await message.reply_text(
+                "❌ Stopwatch belum berjalan. Aktifkan dulu maintenance mode."
+            )
 
         total_seconds, duration_text = get_maintenance_duration()
 
@@ -143,7 +146,10 @@ async def maintenance_handler(client, message):
         LOGGER("ANNIEMUSIC").info(
             f"{color_icon} Maintenance mode DISABLED — Durasi {duration_text} ({color_text})"
         )
-        return await message.reply_text("🔴 Maintenance dimatikan.\n🧾 Laporan dikirim ke grup log.")
+
+        return await message.reply_text(
+            "🔴 Maintenance dimatikan.\n🧾 Laporan dikirim ke grup log."
+        )
 
     else:
-        await message.reply_text("❌ Gunakan hanya `enable` atau `disable`.")
+        await message.reply_text("❌ Gunakan hanya `enable` atau `disable`.")sable`.")
