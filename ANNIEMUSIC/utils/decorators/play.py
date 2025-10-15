@@ -47,12 +47,19 @@ def PlayWrapper(command):
             )
             return await message.reply_text(_["general_3"], reply_markup=upl)
 
-        if await is_maintenance() is False:
+        # 🔧 Perbaikan logika maintenance (dibalik dari yang asli)
+        if await is_maintenance():
             if message.from_user.id not in SUDOERS:
-                return await message.reply_text(
-                    text=f"{app.mention} ɪs ᴜɴᴅᴇʀ ᴍᴀɪɴᴛᴇɴᴀɴᴄᴇ, ᴠɪsɪᴛ <a href={SUPPORT_CHAT}>sᴜᴘᴘᴏʀᴛ ᴄʜᴀᴛ</a> ғᴏʀ ᴋɴᴏᴡɪɴɢ ᴛʜᴇ ʀᴇᴀsᴏɴ.",
-                    disable_web_page_preview=True,
+                text = (
+                    "🚨⚙️ <b>ＭＡＩＮＴＥＮＡＮＣＥ ＭＯＤＥ</b> ⚙️🚨\n\n"
+                    "📢 <b>Bot saat ini sedang dalam mode pemeliharaan.</b>\n"
+                    "Selama proses ini berlangsung, fitur musik tidak dapat digunakan.\n\n"
+                    f"💠 <b>Bot:</b> {app.mention}\n"
+                    f"💬 <b>Dukungan:</b> <a href={SUPPORT_CHAT}>Klik di sini</a>\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "🙏 <i>Terima kasih atas kesabarannya.</i>"
                 )
+                return await message.reply_text(text, disable_web_page_preview=True)
 
         try:
             await message.delete()
@@ -176,10 +183,8 @@ def PlayWrapper(command):
                     await asyncio.sleep(1)
                     await userbot.join_chat(invitelink)
                 except InviteHashExpired:
-                    # Remove expired invite link from the cache.
                     if chat_id in links:
                         del links[chat_id]
-                    # Generate a new invite link.
                     try:
                         invitelink = await app.export_chat_invite_link(chat_id)
                     except ChatAdminRequired:
@@ -192,7 +197,6 @@ def PlayWrapper(command):
                         invitelink = invitelink.replace(
                             "https://t.me/+", "https://t.me/joinchat/"
                         )
-                    # Update the cache.
                     links[chat_id] = invitelink
                     await userbot.join_chat(invitelink)
                 except InviteRequestSent:
