@@ -25,47 +25,47 @@ from ANNIEMUSIC.utils.database import (
 )
 from ANNIEMUSIC.utils.inline import botplaylist_markup
 
-# Cache for invite links per chat
+# Cache untuk link undangan per chat
 links = {}
 
 
 def PlayWrapper(command):
     async def wrapper(client, message):
+        # Ambil bahasa user
         language = await get_lang(message.chat.id)
         _ = get_string(language)
 
+        # Cegah dari channel-anonymous
         if message.sender_chat:
             upl = InlineKeyboardMarkup(
-                [
-                    [
-                        InlineKeyboardButton(
-                            text="ʜᴏᴡ ᴛᴏ ғɪx ?",
-                            callback_data="AnonymousAdmin",
-                        ),
-                    ]
-                ]
+                [[InlineKeyboardButton(text="ʜᴏᴡ ᴛᴏ ғɪx ?", callback_data="AnonymousAdmin")]]
             )
             return await message.reply_text(_["general_3"], reply_markup=upl)
 
-        # 🔧 Perbaikan logika maintenance (dibalik dari yang asli)
-        if await is_maintenance():
+        # 🔧 Cek apakah maintenance sedang aktif
+        check_status = await is_maintenance()
+        print(f"[DEBUG] Maintenance status: {check_status}")
+
+        if not check_status:  # ⬅️ Maintenance aktif (dibalik dari default)
             if message.from_user.id not in SUDOERS:
                 text = (
-                    "🚨⚙️ <b>ＭＡＩＮＴＥＮＡＮＣＥ ＭＯＤＥ</b> ⚙️🚨\n\n"
+                    "🚧⚙️ <b>ＭＡＩＮＴＥＮＡＮＣＥ ＭＯＤＥ</b> ⚙️🚧\n\n"
                     "📢 <b>Bot saat ini sedang dalam mode pemeliharaan.</b>\n"
-                    "Selama proses ini berlangsung, fitur musik tidak dapat digunakan.\n\n"
+                    "Selama proses ini berlangsung, fitur pemutaran musik tidak tersedia.\n\n"
                     f"💠 <b>Bot:</b> {app.mention}\n"
                     f"💬 <b>Dukungan:</b> <a href={SUPPORT_CHAT}>Klik di sini</a>\n"
                     "━━━━━━━━━━━━━━━━━━━━━━\n"
-                    "🙏 <i>Terima kasih atas kesabarannya.</i>"
+                    "🙏 <i>Terima kasih atas pengertiannya.</i>"
                 )
                 return await message.reply_text(text, disable_web_page_preview=True)
 
+        # Hapus command user (biar rapi di chat)
         try:
             await message.delete()
         except Exception:
             pass
 
+        # Deteksi apakah reply audio/video/url
         audio_telegram = (
             (message.reply_to_message.audio or message.reply_to_message.voice)
             if message.reply_to_message
@@ -78,6 +78,7 @@ def PlayWrapper(command):
         )
         url = await YouTube.url(message)
 
+        # Jika tak ada input apa pun
         if audio_telegram is None and video_telegram is None and url is None:
             if len(message.command) < 2:
                 if "stream" in message.command:
@@ -88,6 +89,8 @@ def PlayWrapper(command):
                     caption=_["play_18"],
                     reply_markup=InlineKeyboardMarkup(buttons),
                 )
+
+        # Mode channel
         if message.command[0][0] == "c":
             chat_id = await get_cmode(message.chat.id)
             if chat_id is None:
@@ -101,6 +104,7 @@ def PlayWrapper(command):
             chat_id = message.chat.id
             channel = None
 
+        # Mode play dan siapa yang boleh pakai
         playmode = await get_playmode(message.chat.id)
         playty = await get_playtype(message.chat.id)
         if playty != "Everyone":
@@ -111,6 +115,7 @@ def PlayWrapper(command):
                 elif message.from_user.id not in admins:
                     return await message.reply_text(_["play_4"])
 
+        # Cek mode video/audio
         if message.command[0][0] == "v":
             video = True
         else:
@@ -119,6 +124,7 @@ def PlayWrapper(command):
             else:
                 video = True if message.command[0][1] == "v" else None
 
+        # Jika mode forceplay
         if message.command[0][-1] == "e":
             if not await is_active_chat(chat_id):
                 return await message.reply_text(_["play_16"])
@@ -126,6 +132,7 @@ def PlayWrapper(command):
         else:
             fplay = None
 
+        # Jika belum aktifkan voice chat, pastikan assistant join
         if not await is_active_chat(chat_id):
             userbot = await get_assistant(chat_id)
             try:
@@ -134,23 +141,11 @@ def PlayWrapper(command):
                 except ChatAdminRequired:
                     return await message.reply_text(_["call_1"])
 
-                if member.status in (
-                    ChatMemberStatus.BANNED,
-                    ChatMemberStatus.RESTRICTED,
-                ):
+                if member.status in (ChatMemberStatus.BANNED, ChatMemberStatus.RESTRICTED):
                     return await message.reply_text(
-                        _["call_2"].format(
-                            app.mention, userbot.id, userbot.name, userbot.username
-                        ),
+                        _["call_2"].format(app.mention, userbot.id, userbot.name, userbot.username),
                         reply_markup=InlineKeyboardMarkup(
-                            [
-                                [
-                                    InlineKeyboardButton(
-                                        text="๏ 𝗨ɴʙᴀɴ 𝗔ssɪsᴛᴀɴᴛ ๏",
-                                        callback_data="unban_assistant",
-                                    )
-                                ]
-                            ]
+                            [[InlineKeyboardButton(text="๏ 𝗨ɴʙᴀɴ 𝗔ssɪsᴛᴀɴᴛ ๏", callback_data="unban_assistant")]]
                         ),
                     )
             except UserNotParticipant:
@@ -169,14 +164,10 @@ def PlayWrapper(command):
                         except ChatAdminRequired:
                             return await message.reply_text(_["call_1"])
                         except Exception as e:
-                            return await message.reply_text(
-                                _["call_3"].format(app.mention, type(e).__name__)
-                            )
+                            return await message.reply_text(_["call_3"].format(app.mention, type(e).__name__))
 
                 if invitelink.startswith("https://t.me/+"):
-                    invitelink = invitelink.replace(
-                        "https://t.me/+", "https://t.me/joinchat/"
-                    )
+                    invitelink = invitelink.replace("https://t.me/+", "https://t.me/joinchat/")
 
                 myu = await message.reply_text(_["call_4"].format(app.mention))
                 try:
@@ -190,30 +181,22 @@ def PlayWrapper(command):
                     except ChatAdminRequired:
                         return await message.reply_text(_["call_1"])
                     except Exception as e:
-                        return await message.reply_text(
-                            _["call_3"].format(app.mention, type(e).__name__)
-                        )
+                        return await message.reply_text(_["call_3"].format(app.mention, type(e).__name__))
                     if invitelink.startswith("https://t.me/+"):
-                        invitelink = invitelink.replace(
-                            "https://t.me/+", "https://t.me/joinchat/"
-                        )
+                        invitelink = invitelink.replace("https://t.me/+", "https://t.me/joinchat/")
                     links[chat_id] = invitelink
                     await userbot.join_chat(invitelink)
                 except InviteRequestSent:
                     try:
                         await app.approve_chat_join_request(chat_id, userbot.id)
                     except Exception as e:
-                        return await message.reply_text(
-                            _["call_3"].format(app.mention, type(e).__name__)
-                        )
+                        return await message.reply_text(_["call_3"].format(app.mention, type(e).__name__))
                     await asyncio.sleep(3)
                     await myu.edit(_["call_5"].format(app.mention))
                 except UserAlreadyParticipant:
                     pass
                 except Exception as e:
-                    return await message.reply_text(
-                        _["call_3"].format(app.mention, type(e).__name__)
-                    )
+                    return await message.reply_text(_["call_3"].format(app.mention, type(e).__name__))
 
                 links[chat_id] = invitelink
 
@@ -222,8 +205,7 @@ def PlayWrapper(command):
                 except Exception:
                     pass
 
-        return await command(
-            client, message, _, chat_id, video, channel, playmode, url, fplay
-        )
+        # Lanjut ke eksekusi command utama
+        return await command(client, message, _, chat_id, video, channel, playmode, url, fplay)
 
     return wrapper
