@@ -1,8 +1,11 @@
+import os
 import asyncio
 from datetime import datetime, timezone, timedelta
 from pyrogram import Client, filters
-from config import LOG_GROUP_ID
 from ANNIEMUSIC import LOGGER
+
+# Ambil dari ENV Heroku (LOGGER_ID)
+LOG_GROUP_ID = int(os.getenv("LOGGER_ID", 0))
 
 # 📸 Header image sama seperti di report.py
 HEADER_IMAGE = (
