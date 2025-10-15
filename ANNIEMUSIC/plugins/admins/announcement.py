@@ -2,18 +2,23 @@ import os
 import asyncio
 import random
 from datetime import datetime
-from pyrogram import Client, filters
+from pyrogram import filters
 from pyrogram.errors import FloodWait, ChatWriteForbidden
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pymongo import MongoClient
 
+from ANNIEMUSIC import app  # ✅ gunakan instance utama bot
+
+# === LOG LOAD ===
+print("✅ Plugin announcement.py loaded successfully")
+
 # === KONFIGURASI ===
-LOGGER_ID = int(os.environ.get("LOGGER_ID", "-4812620726"))  # 💬 Grup log bot kamu
+LOGGER_ID = int(os.environ.get("LOGGER_ID", "-4812620726"))  # Grup log bot
 MONGO_URL = os.environ.get("MONGO_DB_URI")
 DB_NAME = "Annie"
 COLLECTION_NAME = "chats"
 
-# Ganti dengan user ID kamu (gunakan @userinfobot)
+# User ID admin / developer (gunakan @userinfobot untuk dapatkan ID)
 SUDO_USERS = [7633980954]
 
 # FOTO DEFAULT UNTUK PENGUMUMAN
@@ -32,17 +37,13 @@ chats_col = db[COLLECTION_NAME]
 pending_announcements = {}
 
 
-# === FUNGSI PENGUMUMAN ===
-@Client.on_message(filters.command("announce"))
+# === FUNGSI UTAMA /announce ===
+@app.on_message(filters.command("announce") & filters.user(SUDO_USERS))
 async def announce_preview(client, message):
-    if message.from_user.id not in SUDO_USERS:
-        return await message.reply_text("🚫 Kamu tidak memiliki izin untuk menggunakan perintah ini.")
-
     if len(message.command) < 2:
         return await message.reply_text("❗ Gunakan format:\n`/announce <pesan>`")
 
     user_text = message.text.split(None, 1)[1].strip()
-
     now = datetime.now()
     bulan = {
         1: "Januari", 2: "Februari", 3: "Maret", 4: "April",
@@ -83,10 +84,9 @@ async def announce_preview(client, message):
 
 
 # === HANDLER KONFIRMASI ===
-@Client.on_callback_query(filters.regex("^(confirm_send|cancel_send)$"))
+@app.on_callback_query(filters.regex("^(confirm_send|cancel_send)$"))
 async def confirm_announcement(client, callback_query):
     user_id = callback_query.from_user.id
-
     if user_id not in pending_announcements:
         return await callback_query.answer("Tidak ada pengumuman aktif.", show_alert=True)
 
@@ -100,7 +100,6 @@ async def confirm_announcement(client, callback_query):
 
     if callback_query.data == "confirm_send":
         await callback_query.answer("Mengirim ke semua grup...", show_alert=False)
-
         sent, failed = 0, 0
         all_chats = list(chats_col.find({"chat_id": {"$lt": 0}}))
         total = len(all_chats)
@@ -111,7 +110,6 @@ async def confirm_announcement(client, callback_query):
                 caption + "\n\n⚠️ Tidak ada grup terdaftar di database."
             )
 
-        # 🧾 LOG AWAL
         admin_name = callback_query.from_user.mention
         start_time = datetime.now().strftime("%H:%M:%S")
         await client.send_message(
@@ -152,7 +150,6 @@ async def confirm_announcement(client, callback_query):
 
             await asyncio.sleep(random.uniform(1.2, 2.5))
 
-        # 🧾 LOG SELESAI
         end_time = datetime.now().strftime("%H:%M:%S")
         try:
             await status_msg.edit_text(
@@ -176,8 +173,8 @@ async def confirm_announcement(client, callback_query):
         del pending_announcements[user_id]
 
 
-# === AUTO ADD GRUP ===
-@Client.on_message(filters.new_chat_members)
+# === AUTO ADD GROUP ===
+@app.on_message(filters.new_chat_members)
 async def auto_add_group(client, message):
     chat_id = message.chat.id
     if chat_id < 0:
@@ -185,13 +182,16 @@ async def auto_add_group(client, message):
 
 
 # === HELP MENU ===
-__MODULE__ = "Admin"
+__MODULE__ = "Announcement"
 __HELP__ = """
-**📣 Perintah Admin:**
+**📣 Pengumuman untuk Admin:**
 
+Gunakan perintah ini untuk mengirim pesan pengumuman ke semua grup yang sudah terdaftar di database.
+
+**Perintah:**
 /announce <pesan>  
-Kirim pengumuman ke semua grup yang terdaftar di database bot.
-
 Contoh:
 `/announce Bot telah diupdate ke versi baru 🚀`
+
+Bot akan menampilkan preview terlebih dahulu sebelum pengumuman dikirim.
 """
