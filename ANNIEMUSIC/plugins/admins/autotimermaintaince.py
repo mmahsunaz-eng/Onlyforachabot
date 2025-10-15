@@ -1,0 +1,113 @@
+import asyncio
+from datetime import datetime, timezone, timedelta
+from pyrogram import Client, filters
+from config import LOG_GROUP_ID
+from ANNIEMUSIC import LOGGER
+
+# 📸 Header image sama seperti di report.py
+HEADER_IMAGE = (
+    "https://raw.githubusercontent.com/mmahsunaz-eng/Onlyforachabot/"
+    "623909aba0de9f88ed8756c71ab53ac7af878e35/"
+    "ANNIEMUSIC/assets/file_00000000e5e462088641d9a6402214ca.png"
+)
+
+# 🕒 Variabel global untuk stopwatch
+maintenance_start_time = None
+
+
+# 🧮 Hitung durasi maintenance
+def get_maintenance_duration():
+    if not maintenance_start_time:
+        return 0, "0 detik"
+    duration = datetime.now(timezone(timedelta(hours=7))) - maintenance_start_time
+    total_seconds = int(duration.total_seconds())
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    text = f"{hours} jam {minutes} menit {seconds} detik"
+    return total_seconds, text
+
+
+# ⚙️ Command: /maintenance enable | /maintenance disable
+@Client.on_message(filters.command(["maintenance", "maint"]))
+async def maintenance_handler(client, message):
+    global maintenance_start_time
+
+    if len(message.command) < 2:
+        return await message.reply_text(
+            "Gunakan:\n"
+            "`/maintenance enable` — aktifkan mode maintenance\n"
+            "`/maintenance disable` — matikan mode maintenance"
+        )
+
+    action = message.command[1].lower()
+    user = message.from_user
+    admin_name = user.first_name if user else "Tidak diketahui"
+    admin_id = user.id if user else 0
+    admin_repr = f"<a href='tg://user?id={admin_id}'>{admin_name}</a>"
+    now_time = datetime.now(timezone(timedelta(hours=7))).strftime("%d %B %Y • %H:%M")
+
+    # 🟢 ENABLE
+    if action == "enable":
+        maintenance_start_time = datetime.now(timezone(timedelta(hours=7)))
+        LOGGER("ANNIEMUSIC").info("🟢 Maintenance mode ENABLED — Stopwatch dimulai.")
+
+        caption = (
+            "🛠️ <b>ＭＡＩＮＴＥＮＡＮＣＥ ＬＯＧ</b> 🛠️\n\n"
+            "<b>Status:</b> 🟢 <code>ENABLED</code>\n"
+            f"🕒 <b>Waktu mulai:</b> {now_time}\n"
+            f"👤 <b>Diaktifkan oleh:</b> {admin_repr}\n"
+            f"🪪 <b>ID Admin:</b> <code>{admin_id}</code>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            "💠 <b>Diterima oleh:</b> ᴏꜰꜰɪᴄɪᴀʟ 「 Oɴʟʏғᴏʀᴀᴄʜᴀ ✘ ʙᴏᴛ 」"
+        )
+
+        try:
+            await client.send_photo(LOG_GROUP_ID, photo=HEADER_IMAGE, caption=caption)
+        except Exception as e:
+            LOGGER("ANNIEMUSIC").warning(f"Gagal kirim log enable: {e}")
+
+        return await message.reply_text("🟢 Maintenance diaktifkan.\n🧾 Laporan dikirim ke grup log.")
+
+    # 🔴 DISABLE
+    elif action == "disable":
+        if not maintenance_start_time:
+            return await message.reply_text("❌ Stopwatch belum berjalan. Aktifkan dulu maintenance mode.")
+
+        total_seconds, duration_text = get_maintenance_duration()
+
+        # 🎨 Tentukan warna status otomatis
+        if total_seconds < 3600:
+            color_icon = "🟢"
+            color_text = "Normal"
+        elif total_seconds < 10800:
+            color_icon = "🟡"
+            color_text = "Sedang"
+        else:
+            color_icon = "🔴"
+            color_text = "Lama"
+
+        caption = (
+            "🛠️ <b>ＭＡＩＮＴＥＮＡＮＣＥ ＬＯＧ</b> 🛠️\n\n"
+            f"<b>Status:</b> 🔴 <code>DISABLED</code>\n"
+            f"⏱️ <b>Durasi:</b> <code>{duration_text}</code>\n"
+            f"🎯 <b>Kategori:</b> {color_icon} <i>{color_text}</i>\n"
+            f"📅 <b>Berakhir pada:</b> {now_time}\n"
+            f"👤 <b>Dimatikan oleh:</b> {admin_repr}\n"
+            f"🪪 <b>ID Admin:</b> <code>{admin_id}</code>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            "💠 <b>Diterima oleh:</b> ᴏꜰꜰɪᴄɪᴀʟ 「 Oɴʟʏғᴏʀᴀᴄʜᴀ ✘ ʙᴏᴛ 」"
+        )
+
+        try:
+            await client.send_photo(LOG_GROUP_ID, photo=HEADER_IMAGE, caption=caption)
+        except Exception as e:
+            LOGGER("ANNIEMUSIC").warning(f"Gagal kirim log disable: {e}")
+
+        maintenance_start_time = None
+        LOGGER("ANNIEMUSIC").info(
+            f"{color_icon} Maintenance mode DISABLED — Durasi {duration_text} ({color_text})"
+        )
+        return await message.reply_text("🔴 Maintenance dimatikan.\n🧾 Laporan dikirim ke grup log.")
+
+    else:
+        await message.reply_text("❌ Gunakan hanya `enable` atau `disable`.")
