@@ -21,7 +21,7 @@ WIB = timezone(timedelta(hours=7))
 # === KONEKSI MONGO ===
 mongo_client = AsyncIOMotorClient(MONGO_URL) if MONGO_URL else None
 db = mongo_client["Annie"] if mongo_client else None
-reports_col = db["reports"] if db else None
+reports_col = db["reports"] if db is not None else None
 
 # === PENYIMPANAN SEMENTARA ===
 pending_reports = {}
