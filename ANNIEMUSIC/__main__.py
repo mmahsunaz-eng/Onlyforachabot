@@ -143,13 +143,15 @@ async def init():
     )
 
     # 📊 Ringkasan status startup
-    LOGGER("ANNIEMUSIC").info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    LOGGER("ANNIEMUSIC").info("🎧 Annie Music System Status:")
-    LOGGER("ANNIEMUSIC").info(f"├─ MongoDB: {'✅ Connected' if db else '⚠️ Not Connected'}")
-    LOGGER("ANNIEMUSIC").info(f"├─ TTL Index: {ttl_status}")
-    LOGGER("ANNIEMUSIC").info("├─ Auto-clean report: ✅ Active")
-    LOGGER("ANNIEMUSIC").info(f"├─ Startup Time: {start_time}")
-    LOGGER("ANNIEMUSIC").info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+LOGGER("ANNIEMUSIC").info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+LOGGER("ANNIEMUSIC").info("🎧 Annie Music System Status:")
+LOGGER("ANNIEMUSIC").info(
+    f"├─ MongoDB: {'✅ Connected' if db is not None else '⚠️ Not Connected'}"
+)
+LOGGER("ANNIEMUSIC").info(f"├─ TTL Index: {ttl_status}")
+LOGGER("ANNIEMUSIC").info("├─ Auto-clean report: ✅ Active")
+LOGGER("ANNIEMUSIC").info(f"├─ Startup Time: {start_time}")
+LOGGER("ANNIEMUSIC").info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
     # 💤 Tetap hidup sampai dihentikan
     await idle()
