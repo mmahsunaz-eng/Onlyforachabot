@@ -212,23 +212,22 @@ async def handle_report_action(client, callback_query: CallbackQuery):
             pass
 
         try:
-            await client.send_photo(
-                info["user_id"],
-                photo=LOGO_URL,
-                caption = (
-    "✅💠 <b>ＬＡＰＯＲＡＮ ＳＥＬＥＳＡＩ</b> 💠✅\n\n"
-    "<b>Laporan Kamu Telah Diselesaikan!</b>\n\n"
-    f"🏷️ <b>Grup/Channel:</b> {info['chat_name']}\n"
-    f"🪪 <b>ID Grup/Channel:</b> <code>{info['chat_id']}</code>\n"
-    f"👨‍💻 <b>Ditangani oleh:</b> {admin.mention}\n"
-    "━━━━━━━━━━━━━━━━━━━━━━\n"
-    "💙 <b>Terima kasih telah melapor!</b>\n"
-    "🙏 <i>Kami menghargai kontribusimu dalam menjaga komunitas tetap aman dan nyaman.</i>"
-        ) 
-                
-        except Exception:
-            pass
-
+    await client.send_photo(
+        info["user_id"],
+        photo=LOGO_URL,
+        caption=(
+            "✅💠 <b>ＬＡＰＯＲＡＮ ＳＥＬＥＳＡＩ</b> 💠✅\n\n"
+            "<b>Laporan Kamu Telah Diselesaikan!</b>\n\n"
+            f"🏷️ <b>Grup/Channel:</b> {info['chat_name']}\n"
+            f"🪪 <b>ID Grup/Channel:</b> <code>{info['chat_id']}</code>\n"
+            f"👨‍💻 <b>Ditangani oleh:</b> {admin.mention}\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            "💙 <b>Terima kasih telah melapor!</b>\n"
+            "🙏 <i>Kami menghargai kontribusimu dalam menjaga komunitas tetap aman dan nyaman.</i>"
+        )
+    )  # ✅ ← tambahkan kurung tutup ini
+except Exception:
+    pass
         await callback_query.answer("✅ Laporan ditandai selesai.", show_alert=True)
         return
 
