@@ -427,19 +427,19 @@ async def add_off(on_off: int):
 async def is_maintenance():
     if not maintenance:
         get = await onoffdb.find_one({"on_off": 1})
-        if not get:
-            maintenance.clear()
-            maintenance.append(2)
-            return True
-        else:
+        if get:
             maintenance.clear()
             maintenance.append(1)
-            return False
+            return True   # ✅ Artinya maintenance AKTIF
+        else:
+            maintenance.clear()
+            maintenance.append(2)
+            return False  # ✅ Artinya maintenance NONAKTIF
     else:
         if 1 in maintenance:
-            return False
-        else:
             return True
+        else:
+            return False
 
 
 async def maintenance_off():
