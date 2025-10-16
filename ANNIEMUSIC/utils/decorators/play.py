@@ -42,11 +42,11 @@ def PlayWrapper(command):
             )
             return await message.reply_text(_["general_3"], reply_markup=upl)
 
-        # 🔧 Cek apakah maintenance sedang aktif
+        # ✅ Perbaikan: logika maintenance yang benar
         check_status = await is_maintenance()
         print(f"[DEBUG] Maintenance status: {check_status}")
 
-        if not check_status:  # ⬅️ Maintenance aktif (dibalik dari default)
+        if check_status:  # True = maintenance aktif
             if message.from_user.id not in SUDOERS:
                 text = (
                     "🚧⚙️ <b>ＭＡＩＮＴＥＮＡＮＣＥ ＭＯＤＥ</b> ⚙️🚧\n\n"
