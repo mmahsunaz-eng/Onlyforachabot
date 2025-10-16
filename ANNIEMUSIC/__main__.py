@@ -15,40 +15,34 @@ from ANNIEMUSIC.utils.database import get_banned_users, get_gbanned
 from ANNIEMUSIC.utils.cookie_handler import fetch_and_store_cookies
 from config import BANNED_USERS
 
-# 🧹 Import fitur auto-clean laporan
+# 🧩 MongoDB Setup
+from motor.motor_asyncio import AsyncIOMotorClient
 from ANNIEMUSIC.plugins.admins.report import auto_clean_reports
 
-# 🧩 Import MongoDB setup TTL index
-from motor.motor_asyncio import AsyncIOMotorClient
 
-
-# === KONFIGURASI MONGODB ===
+# === MONGODB CONNECTION ===
 MONGO_URL = os.getenv("MONGO_DB_URI", None)
+mongo_client = None
+db = None
+reports_col = None
 
 if not MONGO_URL:
     LOGGER("MongoDB").warning("⚠️ Environment variable MONGO_DB_URI tidak ditemukan.")
-    mongo_client = None
-    db = None
-    reports_col = None
 else:
     try:
         mongo_client = AsyncIOMotorClient(MONGO_URL)
-        db = mongo_client["ANNIEMUSIC"]
-        reports_col = db["Annie"]
-        LOGGER("MongoDB").info("✅ MongoDB client berhasil diinisialisasi dan terhubung.")
+        db = mongo_client["Annie"]  # ✅ database utama Annie
+        reports_col = db["reports"]
+        LOGGER("MongoDB").info("✅ Terhubung ke MongoDB database 'Annie'")
     except Exception as e:
-        LOGGER("MongoDB").error(f"❌ Gagal menginisialisasi MongoDB client: {e}")
-        mongo_client = None
-        db = None
-        reports_col = None
+        LOGGER("MongoDB").error(f"❌ Gagal koneksi ke MongoDB: {e}")
 
 
 async def setup_ttl_index():
     """Buat TTL Index agar laporan otomatis terhapus setelah 24 jam."""
     if reports_col is None:
-        LOGGER("MongoDB").warning("⚠️ URL MongoDB tidak diatur — TTL Index dilewati.")
+        LOGGER("MongoDB").warning("⚠️ Tidak terkoneksi ke collection 'reports' — TTL Index dilewati.")
         return "⚠️ Tidak terkoneksi"
-
     try:
         indexes = await reports_col.index_information()
         if "created_at_1" not in indexes:
@@ -82,7 +76,7 @@ async def init():
         )
         exit()
 
-    # 🍪 Load YouTube cookies di awal
+    # 🍪 Load YouTube cookies
     try:
         await fetch_and_store_cookies()
         LOGGER("ANNIEMUSIC").info("🍪 YouTube cookies loaded successfully ✅")
@@ -114,7 +108,7 @@ async def init():
         importlib.import_module("ANNIEMUSIC.plugins" + all_module)
     LOGGER("ANNIEMUSIC.plugins").info("🎶 Annie's modules loaded successfully.")
 
-    # 🧠 Jalankan userbot & JARVIS (panggilan suara)
+    # 🧠 Jalankan userbot & JARVIS (voice call)
     await userbot.start()
     await JARVIS.start()
 
@@ -132,32 +126,31 @@ async def init():
         pass
 
     await JARVIS.decorators()
+    LOGGER("ANNIEMUSIC").info("🎶 Annie Music Robot Started Successfully...")
+
+    # 🧹 Jalankan auto-clean laporan
+    asyncio.create_task(auto_clean_reports(app))
+    LOGGER("ANNIEMUSIC").info("🧹 Auto-clean report aktif • Berjalan setiap 1 menit ✅🚀")
+
+    # 📊 Ringkasan status startup
+    LOGGER("ANNIEMUSIC").info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    LOGGER("ANNIEMUSIC").info("🎧 Annie Music System Status:")
+    LOGGER("ANNIEMUSIC").info(f"├─ MongoDB: {'✅ Connected' if db is not None else '⚠️ Not Connected'}")
+    LOGGER("ANNIEMUSIC").info(f"├─ TTL Index: {ttl_status}")
+    LOGGER("ANNIEMUSIC").info("├─ Auto-clean report: ✅ Active")
+    LOGGER("ANNIEMUSIC").info(f"├─ Startup Time: {start_time}")
+    LOGGER("ANNIEMUSIC").info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
+    # 💤 Tetap hidup
     LOGGER("ANNIEMUSIC").info(
         "\x41\x6e\x6e\x69\x65\x20\x4d\x75\x73\x69\x63\x20\x52\x6f\x62\x6f\x74\x20\x53\x74\x61\x72\x74\x65\x64\x20\x53\x75\x63\x63\x65\x73\x73\x66\x75\x6c\x6c\x79\x2e\x2e\x2e"
     )
-
-    # 🧹 Jalankan auto-clean laporan + summary harian
-    asyncio.create_task(auto_clean_reports(app))
-    LOGGER("ANNIEMUSIC").info(
-        "🧹 Auto-clean report aktif • Sistem report berjalan setiap 1 menit ✅🚀"
-    )
-
-    # 📊 Ringkasan status startup
-LOGGER("ANNIEMUSIC").info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-LOGGER("ANNIEMUSIC").info("🎧 Annie Music System Status:")
-LOGGER("ANNIEMUSIC").info(
-    f"├─ MongoDB: {'✅ Connected' if db is not None else '⚠️ Not Connected'}"
-)
-LOGGER("ANNIEMUSIC").info(f"├─ TTL Index: {ttl_status}")
-LOGGER("ANNIEMUSIC").info("├─ Auto-clean report: ✅ Active")
-LOGGER("ANNIEMUSIC").info(f"├─ Startup Time: {start_time}")
-LOGGER("ANNIEMUSIC").info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-
-    # 💤 Tetap hidup sampai dihentikan
     await idle()
+
+    # 🔻 Saat bot berhenti
     await app.stop()
     await userbot.stop()
-    LOGGER("ANNIEMUSIC").info("🛑 Annie Music Bot Stopped...")
+    LOGGER("ANNIEMUSIC").info("sᴛᴏᴘᴘɪɴɢ ᴀɴɴɪᴇ ᴍᴜsɪᴄ ʙᴏᴛ ...")
 
 
 if __name__ == "__main__":
