@@ -53,9 +53,7 @@ async def fetch_admins(client):
 @app.on_message(filters.command("report"))
 async def report_issue(client, message):
     if len(message.command) < 2:
-        return await message.reply_text(
-            "❗ Gunakan format:\n/report <masalah>"
-        )
+        return await message.reply_text("❗ Gunakan format:\n/report <masalah>")
 
     problem = message.text.split(None, 1)[1]
     report_time = datetime.now().strftime("%d %B %Y | %H:%M WIB")
@@ -126,7 +124,7 @@ async def report_issue(client, message):
         except Exception as e:
             print(f"[MongoDB] Gagal menyimpan laporan: {e}")
 
-    await message.reply_text("✅ Laporan kamu telah dikirim ke tim admin onlyforachabot.\nMohon tunggu, masalah kamu akan segera ditangani.")
+    await message.reply_text("✅ Laporan kamu telah dikirim ke tim admin.\nMohon tunggu, masalah kamu akan segera ditangani.")
 
 
 # === CALLBACK HANDLER ===
@@ -203,8 +201,8 @@ async def manual_reply_to_report(client, message):
     keyboard = InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton("✅ Kirim", callback_data=f"send_reply_{admin_id}"),
-                InlineKeyboardButton("❌ Batal", callback_data=f"cancel_reply_{admin_id}")
+                InlineKeyboardButton("✅ Kirim", callback_data=f"send_reply:{admin_id}"),
+                InlineKeyboardButton("❌ Batal", callback_data=f"cancel_reply:{admin_id}")
             ]
         ]
     )
@@ -218,20 +216,23 @@ async def manual_reply_to_report(client, message):
 
 
 # === CALLBACK untuk konfirmasi kirim / batal ===
-@app.on_callback_query(filters.regex(r"^(send_reply_|cancel_reply_)\d+"))
+@app.on_callback_query(filters.regex(r"^(send_reply:|cancel_reply:)\d+"))
 async def confirm_reply_action(client, callback_query: CallbackQuery):
     data = callback_query.data
-    action, admin_id = data.split("_", 1)
-    admin_id = int(admin_id)
-    admin = callback_query.from_user
+    try:
+        action, admin_id = data.split(":", 1)
+        admin_id = int(admin_id)
+    except Exception:
+        return await callback_query.answer("⚠️ Data callback tidak valid.", show_alert=True)
 
+    admin = callback_query.from_user
     preview = pending_preview.get(admin_id)
     if not preview:
         return await callback_query.answer("⚠️ Tidak ada balasan yang menunggu konfirmasi.", show_alert=True)
 
     info = preview["info"]
 
-    if action == "cancel":
+    if action == "cancel_reply":
         try:
             await callback_query.message.delete()
         except Exception:
@@ -240,7 +241,7 @@ async def confirm_reply_action(client, callback_query: CallbackQuery):
         active_reply.pop(admin_id, None)
         return await callback_query.answer("❌ Balasan dibatalkan.", show_alert=True)
 
-    if action == "send":
+    if action == "send_reply":
         try:
             await client.send_photo(
                 info["chat_id"],
