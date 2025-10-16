@@ -106,7 +106,9 @@ async def report_issue(client, message):
         "chat_name": chat_name,
         "time": datetime.now(),
         "solved": False,
-        "report_msg_id": message.id,  # 🆕 simpan ID pesan laporan user di grup
+        "report_msg_id": message.id,
+        "problem": problem,
+        "reporter_repr": reporter_repr
     }
 
     if reports_col:
@@ -125,15 +127,15 @@ async def report_issue(client, message):
         except Exception as e:
             print(f"[MongoDB] Gagal menyimpan laporan: {e}")
 
-    try:
-        new_kb = InlineKeyboardMarkup(
+    new_kb = InlineKeyboardMarkup(
+        [
             [
-                [
-                    InlineKeyboardButton("🔁 Balas via Bot", callback_data=f"reply_{sent.id}"),
-                    InlineKeyboardButton("✅ Tandai Selesai", callback_data=f"done_{sent.id}"),
-                ]
+                InlineKeyboardButton("🔁 Balas via Bot", callback_data=f"reply_{sent.id}"),
+                InlineKeyboardButton("✅ Tandai Selesai", callback_data=f"done_{sent.id}"),
             ]
-        )
+        ]
+    )
+    try:
         await client.edit_message_reply_markup(LOGGER_ID, sent.id, reply_markup=new_kb)
     except Exception:
         pass
@@ -153,14 +155,7 @@ async def report_issue(client, message):
                     f"🕒 {report_time}\n\n"
                     "Gunakan tombol di bawah untuk menindaklanjuti."
                 ),
-                reply_markup=InlineKeyboardMarkup(
-                    [
-                        [
-                            InlineKeyboardButton("🔁 Balas via Bot", callback_data=f"reply_{sent.id}"),
-                            InlineKeyboardButton("✅ Tandai Selesai", callback_data=f"done_{sent.id}"),
-                        ]
-                    ]
-                ),
+                reply_markup=new_kb,
             )
         except Exception:
             continue
@@ -208,7 +203,7 @@ async def handle_report_action(client, callback_query: CallbackQuery):
 
         try:
             await client.send_photo(
-                info["chat_id"],  # 🔧 kirim ke grup pelapor
+                info["chat_id"],
                 photo=LOGO_URL,
                 caption=(
                     "✅💠 <b>ＬＡＰＯＲＡＮ ＳＥＬＥＳＡＩ</b> 💠✅\n\n"
@@ -220,7 +215,7 @@ async def handle_report_action(client, callback_query: CallbackQuery):
                     "💙 <b>Terima kasih telah melapor!</b>\n"
                     "🙏 <i>Kami menghargai kontribusimu dalam menjaga komunitas tetap aman dan nyaman.</i>"
                 ),
-                reply_to_message_id=info.get("report_msg_id"),  # 🆕 reply ke pesan laporan
+                reply_to_message_id=info.get("report_msg_id"),
             )
         except Exception:
             pass
@@ -228,36 +223,17 @@ async def handle_report_action(client, callback_query: CallbackQuery):
         await callback_query.answer("✅ Laporan ditandai selesai.", show_alert=True)
         return
 
-    # === BALAS VIA BOT ===
+    # === BALAS VIA BOT (manual mode) ===
     if action == "reply":
-        await callback_query.answer("💬 Kirim pesan balasanmu sekarang...", show_alert=False)
-        prompt_msg = await callback_query.message.reply_text(
-            f"💬 {admin.mention}, silakan kirim balasanmu untuk pelapor.\n⏳ Kamu punya waktu 2 menit."
+        await callback_query.answer("💬 Mode balas manual diaktifkan.", show_alert=False)
+        preview = (
+            "🧾 <b>Preview Laporan</b>\n\n"
+            f"👤 <b>Pelapor:</b> {info['reporter_repr']}\n"
+            f"🏷️ <b>Asal:</b> {info['chat_name']}\n"
+            f"💬 <b>Masalah:</b> <i>{info['problem']}</i>\n\n"
+            f"Untuk membalas, ketik:\n<code>/reply {log_msg_id} [pesan balasan]</code>"
         )
-        try:
-            response = await client.listen(callback_query.message.chat.id, timeout=120)
-        except asyncio.TimeoutError:
-            await prompt_msg.edit_text("⌛ Waktu habis. Tidak ada pesan balasan dikirim.")
-            return
-
-        if not getattr(response, "text", None):
-            return await prompt_msg.edit_text("❌ Hanya pesan teks yang bisa dikirim.")
-
-        try:
-            await client.send_photo(
-                info["chat_id"],  # 🧩 kirim ke grup pelapor
-                photo=LOGO_URL,
-                caption=(
-                    "📬 <b>Balasan dari Admin:</b>\n\n"
-                    f"{response.text}\n\n"
-                    "━━━━━━━━━━━━━━━━━━━━━━\n"
-                    f"💠 <b>Dikirim oleh:</b> {admin.mention}"
-                ),
-                reply_to_message_id=info.get("report_msg_id"),  # 🆕 reply langsung ke laporan user
-            )
-            await prompt_msg.edit_text("✅ Balasan berhasil dikirim ke grup pelapor.")
-        except Exception as e:
-            await prompt_msg.edit_text(f"⚠️ Gagal mengirim balasan ke grup pelapor: {e}")
+        await callback_query.message.reply_text(preview)
 
 
 # === COMMAND /reply (manual) ===
@@ -305,13 +281,9 @@ async def manual_reply_to_report(client, message):
 async def auto_clean_reports(client):
     while True:
         now = datetime.now()
-        total, solved, expired_count = 0, 0, 0
         expired_ids = []
 
         for msg_id, info in list(pending_reports.items()):
-            total += 1
-            if info["solved"]:
-                solved += 1
             if datetime.now() - info["time"] > timedelta(hours=24):
                 expired_ids.append(msg_id)
 
@@ -321,37 +293,13 @@ async def auto_clean_reports(client):
             except Exception:
                 pass
             del pending_reports[msg_id]
-            expired_count += 1
             if reports_col:
                 try:
                     await reports_col.delete_one({"log_msg_id": msg_id})
                 except Exception:
                     pass
 
-        if now.hour == 16 and now.minute == 59:
-            summary = (
-                "🕘 <b>Laporan Harian — Onlyforacha ✘ Bot</b>\n"
-                f"📅 <b>{now.strftime('%d %B %Y | %H:%M WIB')}</b>\n"
-                "━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"📥 <b>Laporan Masuk (saat cek):</b> {total}\n"
-                f"✅ <b>Diselesaikan:</b> {solved}\n"
-                f"⌛ <b>Kedaluwarsa (24 jam):</b> {expired_count}\n"
-                "━━━━━━━━━━━━━━━━━━━━━━\n"
-                "📡 <b>Status:</b> Stabil ✅\n"
-                "💠 <b>Dikirim otomatis oleh:</b> ᴏꜰꜰɪᴄɪᴀʟ 「 Oɴʟʏғᴏʀᴀᴄʜᴀ ✘ ʙᴏᴛ 」"
-            )
-            try:
-                await client.send_message(LOGGER_ID, summary)
-            except Exception:
-                pass
-
         await asyncio.sleep(60)
-
-
-@app.on_message(filters.command("start"))
-async def start_auto_task(client, message):
-    asyncio.create_task(auto_clean_reports(client))
-    await message.reply_text("✅ Sistem auto-clean & notifikasi admin aktif.")
 
 
 __MODULE__ = "Admin"
@@ -363,7 +311,4 @@ Kirim laporan masalah langsung ke grup log & admin.
 
 /reply <log_msg_id> <pesan>
 Balas laporan langsung ke grup asal pelapor.
-
-/start
-Aktifkan auto-clean & notifikasi admin harian.
 """
