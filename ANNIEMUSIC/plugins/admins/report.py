@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from pyrogram import filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 import os
-from motor.motor_asyncio import AsyncIOMotorClient  # 🧩 untuk MongoDB
+from motor.motor_asyncio import AsyncIOMotorClient
 
 from ANNIEMUSIC import app
 
@@ -19,6 +19,8 @@ reports_col = db["reports"] if db else None
 
 # === PENYIMPANAN SEMENTARA ===
 pending_reports = {}
+active_reply = {}       # admin_id -> log_msg_id
+pending_preview = {}    # admin_id -> message_id (preview)
 
 # === HELPERS ===
 async def safe_get_chat_name(client, chat):
@@ -51,7 +53,10 @@ async def fetch_admins(client):
 @app.on_message(filters.command("report"))
 async def report_issue(client, message):
     if len(message.command) < 2:
-        return await message.reply_text("❗ Gunakan format:\n`/report <masalah>`")
+        return await message.reply_text(
+            "❗ Gunakan format:\n<code>/report &lt;masalah&gt;</code>",
+            parse_mode="html"
+        )
 
     problem = message.text.split(None, 1)[1]
     report_time = datetime.now().strftime("%d %B %Y | %H:%M WIB")
@@ -84,8 +89,8 @@ async def report_issue(client, message):
     keyboard = InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton("🔁 Balas via Bot", callback_data=f"reply_pending"),
-                InlineKeyboardButton("✅ Tandai Selesai", callback_data=f"done_pending"),
+                InlineKeyboardButton("🔁 Balas via Bot", callback_data=f"reply_{reporter_id}"),
+                InlineKeyboardButton("✅ Tandai Selesai", callback_data=f"done_{reporter_id}"),
             ]
         ]
     )
@@ -127,39 +132,6 @@ async def report_issue(client, message):
         except Exception as e:
             print(f"[MongoDB] Gagal menyimpan laporan: {e}")
 
-    new_kb = InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton("🔁 Balas via Bot", callback_data=f"reply_{sent.id}"),
-                InlineKeyboardButton("✅ Tandai Selesai", callback_data=f"done_{sent.id}"),
-            ]
-        ]
-    )
-    try:
-        await client.edit_message_reply_markup(LOGGER_ID, sent.id, reply_markup=new_kb)
-    except Exception:
-        pass
-
-    admins = await fetch_admins(client)
-    for admin in admins:
-        try:
-            await client.send_photo(
-                admin.id,
-                photo=LOGO_URL,
-                caption=(
-                    f"🚨 <b>Laporan Baru Masuk!</b>\n\n"
-                    f"👤 Dari: {reporter_repr}\n"
-                    f"💬 Masalah: <i>{problem}</i>\n"
-                    f"🏷️ Grup/Channel: {chat_name}\n"
-                    f"🪪 ID Grup/Channel: <code>{chat_id}</code>\n"
-                    f"🕒 {report_time}\n\n"
-                    "Gunakan tombol di bawah untuk menindaklanjuti."
-                ),
-                reply_markup=new_kb,
-            )
-        except Exception:
-            continue
-
     await message.reply_text("✅ Laporan kamu telah dikirim ke tim admin.\nMohon tunggu, masalah kamu akan segera ditangani.")
 
 
@@ -169,136 +141,154 @@ async def handle_report_action(client, callback_query: CallbackQuery):
     data = callback_query.data
     admin = callback_query.from_user
 
-    try:
-        action, rest = data.split("_", 1)
-        log_msg_id = int(rest)
-    except Exception:
-        return await callback_query.answer("Data callback invalid.", show_alert=True)
+    action, rest = data.split("_", 1)
+    key = int(rest) if rest.isdigit() else None
 
-    info = pending_reports.get(log_msg_id)
-    if not info:
+    # Temukan laporan berdasarkan user_id pelapor
+    report_info = None
+    for msg_id, info in pending_reports.items():
+        if info["user_id"] == key:
+            report_info = info
+            report_info["log_msg_id"] = msg_id
+            break
+
+    if not report_info:
         return await callback_query.answer("Laporan tidak ditemukan atau sudah kadaluwarsa.", show_alert=True)
 
-    # === TANDAI SELESAI ===
     if action == "done":
-        if info["solved"]:
-            return await callback_query.answer("Laporan ini sudah ditandai selesai.", show_alert=True)
-
-        info["solved"] = True
-        if reports_col:
-            try:
-                await reports_col.update_one({"log_msg_id": log_msg_id}, {"$set": {"solved": True}})
-            except Exception:
-                pass
-
+        report_info["solved"] = True
         try:
-            msg = await client.get_messages(LOGGER_ID, log_msg_id)
-            await client.edit_message_caption(
-                LOGGER_ID,
-                log_msg_id,
-                caption=msg.caption + f"\n\n✅ <b>Masalah diselesaikan oleh:</b> {admin.mention}",
+            await client.send_photo(
+                report_info["chat_id"],
+                photo=LOGO_URL,
+                caption=(
+                    "✅💠 <b>ＬＡＰＯＲＡＮ ＳＥＬＥＳＡＩ</b> 💠✅\n\n"
+                    "<b>Laporan Kamu Telah Diselesaikan!</b>\n\n"
+                    f"🏷️ <b>Grup/Channel:</b> {report_info['chat_name']}\n"
+                    f"👨‍💻 <b>Ditangani oleh:</b> {admin.mention}\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "💙 <b>Terima kasih telah melapor!</b>"
+                ),
+                reply_to_message_id=report_info.get("report_msg_id"),
             )
         except Exception:
             pass
+        return await callback_query.answer("✅ Ditandai selesai.", show_alert=True)
 
+    # === BALAS VIA BOT ===
+    if action == "reply":
+        active_reply[admin.id] = report_info["log_msg_id"]
+        await callback_query.message.reply_text(
+            f"💬 <b>{admin.first_name}</b>, untuk membalas laporan ini ketik:\n<code>/reply [pesan balasan]</code>",
+            parse_mode="html"
+        )
+        await callback_query.answer("Instruksi dikirim!", show_alert=False)
+
+
+# === COMMAND /reply ===
+@app.on_message(filters.command("reply"))
+async def manual_reply_to_report(client, message):
+    admin_id = message.from_user.id
+    if admin_id not in active_reply:
+        return await message.reply_text(
+            "❌ Kamu belum memilih laporan.\nTekan dulu tombol <b>“Balas via Bot”</b> di laporan yang ingin kamu tanggapi.",
+            parse_mode="html"
+        )
+
+    if len(message.command) < 2:
+        return await message.reply_text(
+            "❗ Gunakan format:\n<code>/reply [pesan balasan]</code>",
+            parse_mode="html"
+        )
+
+    reply_text = message.text.split(None, 1)[1]
+    log_msg_id = active_reply[admin_id]
+    info = pending_reports.get(log_msg_id)
+    if not info:
+        return await message.reply_text("⚠️ Laporan tidak ditemukan atau sudah kadaluwarsa.")
+
+    preview_caption = (
+        "📬 <b>Preview Balasan</b>\n\n"
+        f"{reply_text}\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"💠 <b>Dikirim oleh:</b> {message.from_user.mention}"
+    )
+
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("✅ Kirim", callback_data=f"send_reply_{admin_id}"),
+                InlineKeyboardButton("❌ Batal", callback_data=f"cancel_reply_{admin_id}")
+            ]
+        ]
+    )
+
+    sent = await message.reply_text(preview_caption, reply_markup=keyboard, parse_mode="html")
+    pending_preview[admin_id] = {
+        "msg_id": sent.id,
+        "text": reply_text,
+        "info": info
+    }
+
+
+# === CALLBACK untuk konfirmasi kirim / batal ===
+@app.on_callback_query(filters.regex(r"^(send_reply_|cancel_reply_)\d+"))
+async def confirm_reply_action(client, callback_query: CallbackQuery):
+    data = callback_query.data
+    action, admin_id = data.split("_", 1)
+    admin_id = int(admin_id)
+    admin = callback_query.from_user
+
+    preview = pending_preview.get(admin_id)
+    if not preview:
+        return await callback_query.answer("⚠️ Tidak ada balasan yang menunggu konfirmasi.", show_alert=True)
+
+    info = preview["info"]
+
+    if action == "cancel":
+        try:
+            await callback_query.message.delete()
+        except Exception:
+            pass
+        del pending_preview[admin_id]
+        del active_reply[admin_id]
+        return await callback_query.answer("❌ Balasan dibatalkan.", show_alert=True)
+
+    if action == "send":
         try:
             await client.send_photo(
                 info["chat_id"],
                 photo=LOGO_URL,
                 caption=(
-                    "✅💠 <b>ＬＡＰＯＲＡＮ ＳＥＬＥＳＡＩ</b> 💠✅\n\n"
-                    "<b>Laporan Kamu Telah Diselesaikan!</b>\n\n"
-                    f"🏷️ <b>Grup/Channel:</b> {info['chat_name']}\n"
-                    f"🪪 <b>ID Grup/Channel:</b> <code>{info['chat_id']}</code>\n"
-                    f"👨‍💻 <b>Ditangani oleh:</b> {admin.mention}\n"
+                    "📬 <b>Balasan dari Admin:</b>\n\n"
+                    f"{preview['text']}\n\n"
                     "━━━━━━━━━━━━━━━━━━━━━━\n"
-                    "💙 <b>Terima kasih telah melapor!</b>\n"
-                    "🙏 <i>Kami menghargai kontribusimu dalam menjaga komunitas tetap aman dan nyaman.</i>"
+                    f"💠 <b>Dikirim oleh:</b> {admin.mention}"
                 ),
                 reply_to_message_id=info.get("report_msg_id"),
             )
-        except Exception:
-            pass
+            await callback_query.message.edit_text("✅ Balasan berhasil dikirim ke grup pelapor.")
+        except Exception as e:
+            await callback_query.message.edit_text(f"⚠️ Gagal mengirim balasan: {e}")
 
-        await callback_query.answer("✅ Laporan ditandai selesai.", show_alert=True)
-        return
-
-    # === BALAS VIA BOT (manual mode) ===
-    if action == "reply":
-        await callback_query.answer("💬 Mode balas manual diaktifkan.", show_alert=False)
-        preview = (
-            "🧾 <b>Preview Laporan</b>\n\n"
-            f"👤 <b>Pelapor:</b> {info['reporter_repr']}\n"
-            f"🏷️ <b>Asal:</b> {info['chat_name']}\n"
-            f"💬 <b>Masalah:</b> <i>{info['problem']}</i>\n\n"
-            f"Untuk membalas, ketik:\n<code>/reply {log_msg_id} [pesan balasan]</code>"
-        )
-        await callback_query.message.reply_text(preview)
+        del pending_preview[admin_id]
+        del active_reply[admin_id]
+        await callback_query.answer("✅ Balasan terkirim!", show_alert=True)
 
 
-# === COMMAND /reply (manual) ===
-@app.on_message(filters.command("reply"))
-async def manual_reply_to_report(client, message):
-    if len(message.command) < 3:
-        return await message.reply_text("❗ Gunakan format:\n`/reply <log_msg_id> <pesan>`")
-
-    try:
-        log_msg_id = int(message.command[1])
-        reply_text = message.text.split(None, 2)[2]
-    except Exception:
-        return await message.reply_text("⚠️ Format salah. Contoh:\n`/reply 12345 Terima kasih, sudah kami tindaklanjuti.`")
-
-    info = pending_reports.get(log_msg_id)
-    if not info and reports_col:
-        data = await reports_col.find_one({"log_msg_id": log_msg_id})
-        if data:
-            info = {"chat_id": data["chat_id"], "chat_name": data["chat_name"], "user_id": data["user_id"]}
-
-    if not info:
-        return await message.reply_text("❌ Laporan tidak ditemukan atau sudah kadaluwarsa.")
-
-    chat_id = info["chat_id"]
-    admin = message.from_user
-
-    try:
-        await client.send_photo(
-            chat_id,
-            photo=LOGO_URL,
-            caption=(
-                "📬 <b>Balasan dari Admin:</b>\n\n"
-                f"{reply_text}\n\n"
-                "━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"💠 <b>Dikirim oleh:</b> {admin.mention}"
-            ),
-            reply_to_message_id=info.get("report_msg_id"),
-        )
-        await message.reply_text(f"✅ Balasan dikirim ke grup asal laporan: <b>{info['chat_name']}</b>")
-    except Exception as e:
-        await message.reply_text(f"⚠️ Gagal mengirim balasan ke grup: {e}")
-
-
-# === AUTO CLEANUP & DAILY SUMMARY ===
+# === AUTO CLEANUP ===
 async def auto_clean_reports(client):
     while True:
-        now = datetime.now()
         expired_ids = []
-
         for msg_id, info in list(pending_reports.items()):
             if datetime.now() - info["time"] > timedelta(hours=24):
                 expired_ids.append(msg_id)
-
         for msg_id in expired_ids:
             try:
                 await client.delete_messages(LOGGER_ID, msg_id)
             except Exception:
                 pass
             del pending_reports[msg_id]
-            if reports_col:
-                try:
-                    await reports_col.delete_one({"log_msg_id": msg_id})
-                except Exception:
-                    pass
-
         await asyncio.sleep(60)
 
 
@@ -309,6 +299,6 @@ __HELP__ = """
 /report <masalah>
 Kirim laporan masalah langsung ke grup log & admin.
 
-/reply <log_msg_id> <pesan>
-Balas laporan langsung ke grup asal pelapor.
+/reply [pesan]
+Tampilkan preview balasan dan kirim ke grup pelapor dengan konfirmasi.
 """
