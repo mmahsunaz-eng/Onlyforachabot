@@ -23,7 +23,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 
 
 # === KONFIGURASI MONGODB ===
-MONGO_URL = os.getenv("MONGO_URL", None)
+MONGO_URL = os.getenv("MONGO_DB_URI", None)
 mongo_client = AsyncIOMotorClient(MONGO_URL) if MONGO_URL else None
 db = mongo_client["ANNIEMUSIC"] if mongo_client else None
 reports_col = db["reports"] if db else None
