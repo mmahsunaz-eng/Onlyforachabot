@@ -54,8 +54,7 @@ async def fetch_admins(client):
 async def report_issue(client, message):
     if len(message.command) < 2:
         return await message.reply_text(
-            "❗ Gunakan format:\n<code>/report &lt;masalah&gt;</code>",
-            parse_mode="html"
+            "❗ Gunakan format:\n/report <masalah>"
         )
 
     problem = message.text.split(None, 1)[1]
@@ -63,11 +62,11 @@ async def report_issue(client, message):
 
     if message.from_user:
         reporter = message.from_user
-        reporter_repr = f"{reporter.mention} (`{reporter.id}`)"
+        reporter_repr = f"{reporter.mention} ({reporter.id})"
         reporter_id = reporter.id
     else:
         sender = message.sender_chat
-        reporter_repr = f"{sender.title} (channel) (`{sender.id}`)"
+        reporter_repr = f"{sender.title} (channel) ({sender.id})"
         reporter_id = sender.id
 
     chat = message.chat
@@ -75,15 +74,15 @@ async def report_issue(client, message):
     chat_id = chat.id
 
     caption = (
-        "🚨⚠️ <b>ＰＥＲＨＡＴＩＡＮ</b> ⚠️🚨\n\n"
-        "<b>Laporan Masalah Baru Telah Diterima!</b>\n\n"
-        f"👤 <b>Pelapor:</b> {reporter_repr}\n"
-        f"💬 <b>Masalah:</b> <i>{problem}</i>\n"
-        f"🏷️ <b>Asal:</b> {chat_name}\n"
-        f"🪪 <b>ID Asal:</b> <code>{chat_id}</code>\n"
-        f"🕒 <b>{report_time}</b>\n"
+        "🚨⚠️ PERHATIAN ⚠️🚨\n\n"
+        "Laporan Masalah Baru Telah Diterima!\n\n"
+        f"👤 Pelapor: {reporter_repr}\n"
+        f"💬 Masalah: {problem}\n"
+        f"🏷️ Asal: {chat_name}\n"
+        f"🪪 ID Asal: {chat_id}\n"
+        f"🕒 {report_time}\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n"
-        "💠 <b>Diterima oleh:</b> ᴏꜰꜰɪᴄɪᴀʟ 「 Oɴʟʏғᴏʀᴀᴄʜᴀ ✘ ʙᴏᴛ 」"
+        "💠 Diterima oleh: Onlyforacha ✘ Bot"
     )
 
     keyboard = InlineKeyboardMarkup(
@@ -96,12 +95,7 @@ async def report_issue(client, message):
     )
 
     try:
-        sent = await client.send_photo(
-            LOGGER_ID,
-            photo=LOGO_URL,
-            caption=caption,
-            reply_markup=keyboard,
-        )
+        sent = await client.send_photo(LOGGER_ID, photo=LOGO_URL, caption=caption, reply_markup=keyboard)
     except Exception as e:
         return await message.reply_text(f"⚠️ Gagal mengirim laporan ke log: {e}")
 
@@ -132,7 +126,7 @@ async def report_issue(client, message):
         except Exception as e:
             print(f"[MongoDB] Gagal menyimpan laporan: {e}")
 
-    await message.reply_text("✅ Laporan kamu telah dikirim ke tim admin.\nMohon tunggu, masalah kamu akan segera ditangani.")
+    await message.reply_text("✅ Laporan kamu telah dikirim ke tim admin onlyforachabot.\nMohon tunggu, masalah kamu akan segera ditangani.")
 
 
 # === CALLBACK HANDLER ===
@@ -140,11 +134,9 @@ async def report_issue(client, message):
 async def handle_report_action(client, callback_query: CallbackQuery):
     data = callback_query.data
     admin = callback_query.from_user
-
     action, rest = data.split("_", 1)
     key = int(rest) if rest.isdigit() else None
 
-    # Temukan laporan berdasarkan user_id pelapor
     report_info = None
     for msg_id, info in pending_reports.items():
         if info["user_id"] == key:
@@ -162,12 +154,12 @@ async def handle_report_action(client, callback_query: CallbackQuery):
                 report_info["chat_id"],
                 photo=LOGO_URL,
                 caption=(
-                    "✅💠 <b>ＬＡＰＯＲＡＮ ＳＥＬＥＳＡＩ</b> 💠✅\n\n"
-                    "<b>Laporan Kamu Telah Diselesaikan!</b>\n\n"
-                    f"🏷️ <b>Grup/Channel:</b> {report_info['chat_name']}\n"
-                    f"👨‍💻 <b>Ditangani oleh:</b> {admin.mention}\n"
+                    "✅💠 LAPORAN SELESAI 💠✅\n\n"
+                    f"Laporan Kamu Telah Diselesaikan!\n\n"
+                    f"🏷️ Grup/Channel: {report_info['chat_name']}\n"
+                    f"👨‍💻 Ditangani oleh: {admin.mention}\n"
                     "━━━━━━━━━━━━━━━━━━━━━━\n"
-                    "💙 <b>Terima kasih telah melapor!</b>"
+                    "💙 Terima kasih telah melapor!"
                 ),
                 reply_to_message_id=report_info.get("report_msg_id"),
             )
@@ -175,12 +167,10 @@ async def handle_report_action(client, callback_query: CallbackQuery):
             pass
         return await callback_query.answer("✅ Ditandai selesai.", show_alert=True)
 
-    # === BALAS VIA BOT ===
     if action == "reply":
         active_reply[admin.id] = report_info["log_msg_id"]
         await callback_query.message.reply_text(
-            f"💬 <b>{admin.first_name}</b>, untuk membalas laporan ini ketik:\n<code>/reply [pesan balasan]</code>",
-            parse_mode="html"
+            f"💬 {admin.first_name}, untuk membalas laporan ini ketik:\n/reply [pesan balasan]"
         )
         await callback_query.answer("Instruksi dikirim!", show_alert=False)
 
@@ -191,15 +181,11 @@ async def manual_reply_to_report(client, message):
     admin_id = message.from_user.id
     if admin_id not in active_reply:
         return await message.reply_text(
-            "❌ Kamu belum memilih laporan.\nTekan dulu tombol <b>“Balas via Bot”</b> di laporan yang ingin kamu tanggapi.",
-            parse_mode="html"
+            "❌ Kamu belum memilih laporan.\nTekan dulu tombol “Balas via Bot”."
         )
 
     if len(message.command) < 2:
-        return await message.reply_text(
-            "❗ Gunakan format:\n<code>/reply [pesan balasan]</code>",
-            parse_mode="html"
-        )
+        return await message.reply_text("❗ Gunakan format:\n/reply [pesan balasan]")
 
     reply_text = message.text.split(None, 1)[1]
     log_msg_id = active_reply[admin_id]
@@ -208,10 +194,10 @@ async def manual_reply_to_report(client, message):
         return await message.reply_text("⚠️ Laporan tidak ditemukan atau sudah kadaluwarsa.")
 
     preview_caption = (
-        "📬 <b>Preview Balasan</b>\n\n"
+        "📬 Preview Balasan\n\n"
         f"{reply_text}\n\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"💠 <b>Dikirim oleh:</b> {message.from_user.mention}"
+        f"💠 Dikirim oleh: {message.from_user.mention}"
     )
 
     keyboard = InlineKeyboardMarkup(
@@ -223,7 +209,7 @@ async def manual_reply_to_report(client, message):
         ]
     )
 
-    sent = await message.reply_text(preview_caption, reply_markup=keyboard, parse_mode="html")
+    sent = await message.reply_text(preview_caption, reply_markup=keyboard)
     pending_preview[admin_id] = {
         "msg_id": sent.id,
         "text": reply_text,
@@ -250,8 +236,8 @@ async def confirm_reply_action(client, callback_query: CallbackQuery):
             await callback_query.message.delete()
         except Exception:
             pass
-        del pending_preview[admin_id]
-        del active_reply[admin_id]
+        pending_preview.pop(admin_id, None)
+        active_reply.pop(admin_id, None)
         return await callback_query.answer("❌ Balasan dibatalkan.", show_alert=True)
 
     if action == "send":
@@ -260,10 +246,10 @@ async def confirm_reply_action(client, callback_query: CallbackQuery):
                 info["chat_id"],
                 photo=LOGO_URL,
                 caption=(
-                    "📬 <b>Balasan dari Admin:</b>\n\n"
+                    "📬 Balasan dari Admin:\n\n"
                     f"{preview['text']}\n\n"
                     "━━━━━━━━━━━━━━━━━━━━━━\n"
-                    f"💠 <b>Dikirim oleh:</b> {admin.mention}"
+                    f"💠 Dikirim oleh: {admin.mention}"
                 ),
                 reply_to_message_id=info.get("report_msg_id"),
             )
@@ -271,8 +257,8 @@ async def confirm_reply_action(client, callback_query: CallbackQuery):
         except Exception as e:
             await callback_query.message.edit_text(f"⚠️ Gagal mengirim balasan: {e}")
 
-        del pending_preview[admin_id]
-        del active_reply[admin_id]
+        pending_preview.pop(admin_id, None)
+        active_reply.pop(admin_id, None)
         await callback_query.answer("✅ Balasan terkirim!", show_alert=True)
 
 
@@ -288,17 +274,17 @@ async def auto_clean_reports(client):
                 await client.delete_messages(LOGGER_ID, msg_id)
             except Exception:
                 pass
-            del pending_reports[msg_id]
+            pending_reports.pop(msg_id, None)
         await asyncio.sleep(60)
 
 
 __MODULE__ = "Admin"
 __HELP__ = """
-**📣 Fitur Report Admin (Auto & MongoDB):**
+📣 Fitur Report Admin (Auto & MongoDB)
 
-/report <masalah>
-Kirim laporan masalah langsung ke grup log & admin.
+- /report <masalah>
+  Kirim laporan ke grup log & admin.
 
-/reply [pesan]
-Tampilkan preview balasan dan kirim ke grup pelapor dengan konfirmasi.
+- /reply [pesan]
+  Tampilkan preview balasan dan konfirmasi sebelum dikirim.
 """
