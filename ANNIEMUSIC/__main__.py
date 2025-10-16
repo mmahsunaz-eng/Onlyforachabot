@@ -1,5 +1,7 @@
 import asyncio
 import importlib
+import os
+from datetime import datetime
 
 from pyrogram import idle
 from pytgcalls.exceptions import NoActiveGroupCall
@@ -13,8 +15,47 @@ from ANNIEMUSIC.utils.database import get_banned_users, get_gbanned
 from ANNIEMUSIC.utils.cookie_handler import fetch_and_store_cookies
 from config import BANNED_USERS
 
+# 🧹 Import fitur auto-clean laporan
+from ANNIEMUSIC.plugins.admin.report import auto_clean_reports
 
+# 🧩 Import MongoDB setup TTL index
+from motor.motor_asyncio import AsyncIOMotorClient
+
+
+# === KONFIGURASI MONGODB ===
+MONGO_URL = os.getenv("MONGO_URL", None)
+mongo_client = AsyncIOMotorClient(MONGO_URL) if MONGO_URL else None
+db = mongo_client["ANNIEMUSIC"] if mongo_client else None
+reports_col = db["reports"] if db else None
+
+
+async def setup_ttl_index():
+    """Buat TTL Index agar laporan otomatis terhapus setelah 24 jam."""
+    if not reports_col:
+        LOGGER("MongoDB").warning("⚠️ URL MongoDB tidak diatur — TTL Index dilewati.")
+        return "⚠️ Tidak terkoneksi"
+
+    try:
+        indexes = await reports_col.index_information()
+        if "created_at_1" not in indexes:
+            await reports_col.create_index("created_at", expireAfterSeconds=86400)
+            LOGGER("MongoDB").info("✅ TTL Index dibuat untuk 'created_at' (24 jam).")
+            return "✅ TTL Index dibuat"
+        else:
+            LOGGER("MongoDB").info("✅ TTL Index sudah ada (24 jam).")
+            return "✅ TTL Index sudah ada"
+    except Exception as e:
+        LOGGER("MongoDB").error(f"⚠️ Gagal membuat TTL Index: {e}")
+        return "⚠️ Gagal membuat TTL Index"
+
+
+# === INISIALISASI BOT ===
 async def init():
+    start_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    LOGGER("ANNIEMUSIC").info("🚀 Starting Annie Music Bot...")
+    LOGGER("ANNIEMUSIC").info(f"🕓 Startup Time: {start_time}")
+
+    # 🔐 Validasi Pyrogram Session
     if (
         not config.STRING1
         and not config.STRING2
@@ -22,19 +63,23 @@ async def init():
         and not config.STRING4
         and not config.STRING5
     ):
-        LOGGER(__name__).error("ᴀssɪsᴛᴀɴᴛ sᴇssɪᴏɴ ɴᴏᴛ ғɪʟʟᴇᴅ, ᴘʟᴇᴀsᴇ ғɪʟʟ ᴀ ᴘʏʀᴏɢʀᴀᴍ sᴇssɪᴏɴ...")
+        LOGGER(__name__).error(
+            "❌ Assistant session belum diatur! Harap isi minimal satu STRING di config."
+        )
         exit()
 
-    # ✅ Try to fetch cookies at startup
+    # 🍪 Load YouTube cookies di awal
     try:
         await fetch_and_store_cookies()
-        LOGGER("ANNIEMUSIC").info("ʏᴏᴜᴛᴜʙᴇ ᴄᴏᴏᴋɪᴇs ʟᴏᴀᴅᴇᴅ sᴜᴄᴄᴇssғᴜʟʟʏ ✅")
+        LOGGER("ANNIEMUSIC").info("🍪 YouTube cookies loaded successfully ✅")
     except Exception as e:
-        LOGGER("ANNIEMUSIC").warning(f"⚠️ᴄᴏᴏᴋɪᴇ ᴇʀʀᴏʀ: {e}")
+        LOGGER("ANNIEMUSIC").warning(f"⚠️ Cookie error: {e}")
 
-
+    # 👑 Load sudo users
     await sudo()
+    LOGGER("ANNIEMUSIC").info("👑 Sudo users loaded successfully.")
 
+    # 🚫 Load banned & gbanned users
     try:
         users = await get_gbanned()
         for user_id in users:
@@ -42,36 +87,61 @@ async def init():
         users = await get_banned_users()
         for user_id in users:
             BANNED_USERS.add(user_id)
-    except:
-        pass
+        LOGGER("ANNIEMUSIC").info(f"🚫 Loaded {len(BANNED_USERS)} banned users.")
+    except Exception as e:
+        LOGGER("ANNIEMUSIC").warning(f"⚠️ Gagal memuat banned users: {e}")
 
+    # 🧠 Setup MongoDB TTL Index
+    ttl_status = await setup_ttl_index()
+
+    # 🚀 Start bot utama
     await app.start()
     for all_module in ALL_MODULES:
         importlib.import_module("ANNIEMUSIC.plugins" + all_module)
+    LOGGER("ANNIEMUSIC.plugins").info("🎶 Annie's modules loaded successfully.")
 
-    LOGGER("ANNIEMUSIC.plugins").info("ᴀɴɴɪᴇ's ᴍᴏᴅᴜʟᴇs ʟᴏᴀᴅᴇᴅ...")
-
+    # 🧠 Jalankan userbot & JARVIS (panggilan suara)
     await userbot.start()
     await JARVIS.start()
 
+    # 🎧 Test koneksi voice chat
     try:
-        await JARVIS.stream_call("http://docs.evostream.com/sample_content/assets/sintel1m720p.mp4")
+        await JARVIS.stream_call(
+            "http://docs.evostream.com/sample_content/assets/sintel1m720p.mp4"
+        )
     except NoActiveGroupCall:
         LOGGER("ANNIEMUSIC").error(
-            "ᴘʟᴇᴀsᴇ ᴛᴜʀɴ ᴏɴ ᴛʜᴇ ᴠᴏɪᴄᴇ ᴄʜᴀᴛ ᴏғ ʏᴏᴜʀ ʟᴏɢ ɢʀᴏᴜᴘ/ᴄʜᴀɴɴᴇʟ.\n\nᴀɴɴɪᴇ ʙᴏᴛ sᴛᴏᴘᴘᴇᴅ..."
+            "⚠️ Voice chat tidak aktif di log group/channel Anda.\n\nAnnie Bot dihentikan..."
         )
         exit()
-    except:
+    except Exception:
         pass
 
     await JARVIS.decorators()
     LOGGER("ANNIEMUSIC").info(
         "\x41\x6e\x6e\x69\x65\x20\x4d\x75\x73\x69\x63\x20\x52\x6f\x62\x6f\x74\x20\x53\x74\x61\x72\x74\x65\x64\x20\x53\x75\x63\x63\x65\x73\x73\x66\x75\x6c\x6c\x79\x2e\x2e\x2e"
     )
+
+    # 🧹 Jalankan auto-clean laporan + summary harian
+    asyncio.create_task(auto_clean_reports(app))
+    LOGGER("ANNIEMUSIC").info(
+        "🧹 Auto-clean report aktif • Sistem report berjalan setiap 1 menit ✅🚀"
+    )
+
+    # 📊 Ringkasan status startup
+    LOGGER("ANNIEMUSIC").info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    LOGGER("ANNIEMUSIC").info("🎧 Annie Music System Status:")
+    LOGGER("ANNIEMUSIC").info(f"├─ MongoDB: {'✅ Connected' if db else '⚠️ Not Connected'}")
+    LOGGER("ANNIEMUSIC").info(f"├─ TTL Index: {ttl_status}")
+    LOGGER("ANNIEMUSIC").info("├─ Auto-clean report: ✅ Active")
+    LOGGER("ANNIEMUSIC").info(f"├─ Startup Time: {start_time}")
+    LOGGER("ANNIEMUSIC").info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
+    # 💤 Tetap hidup sampai dihentikan
     await idle()
     await app.stop()
     await userbot.stop()
-    LOGGER("ANNIEMUSIC").info("sᴛᴏᴘᴘɪɴɢ ᴀɴɴɪᴇ ᴍᴜsɪᴄ ʙᴏᴛ ...")
+    LOGGER("ANNIEMUSIC").info("🛑 Annie Music Bot Stopped...")
 
 
 if __name__ == "__main__":
