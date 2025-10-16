@@ -16,7 +16,7 @@ from ANNIEMUSIC.utils.cookie_handler import fetch_and_store_cookies
 from config import BANNED_USERS
 
 # 🧹 Import fitur auto-clean laporan
-from ANNIEMUSIC.plugins.admin.report import auto_clean_reports
+from ANNIEMUSIC.plugins.admins.report import auto_clean_reports
 
 # 🧩 Import MongoDB setup TTL index
 from motor.motor_asyncio import AsyncIOMotorClient
