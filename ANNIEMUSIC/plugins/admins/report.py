@@ -2,10 +2,8 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 from pyrogram import filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-from pyrogram.handlers import MessageHandler
 import os
 from motor.motor_asyncio import AsyncIOMotorClient
-
 from ANNIEMUSIC import app
 
 # === KONFIGURASI ===
@@ -15,26 +13,17 @@ LOGO_URL = (
     "623909aba0de9f88ed8756c71ab53ac7af878e35/ANNIEMUSIC/assets/"
     "file_00000000e5e462088641d9a6402214ca.png"
 )
-MONGO_URL = os.getenv("MONGO_URL", None)
+MONGO_URL = os.getenv("MONGO_DB_URI", None)
+
+# Zona waktu Surabaya (WIB)
+WIB = timezone(timedelta(hours=7))
 
 # === KONEKSI MONGO ===
 mongo_client = AsyncIOMotorClient(MONGO_URL) if MONGO_URL else None
-db = mongo_client["ANNIEMUSIC"] if mongo_client else None
+db = mongo_client["Annie"] if mongo_client else None
 reports_col = db["reports"] if db else None
 
 # === PENYIMPANAN SEMENTARA ===
-# Struktur:
-# pending_reports = {
-#   log_msg_id: {
-#       "user_id": int,
-#       "chat_id": int,
-#       "chat_name": str,
-#       "problem": str,
-#       "time": datetime,
-#       "solved": bool,
-#       "pending_reply": {"admin_id": int, "text": str, "confirm_msg_id": int} (optional)
-#   }
-# }
 pending_reports = {}
 
 # === HELPERS ===
@@ -71,16 +60,11 @@ async def report_issue(client, message):
         return await message.reply_text("❗ Gunakan format:\n`/report <masalah>`")
 
     problem = message.text.split(None, 1)[1]
-    report_time = datetime.now().strftime("%d %B %Y | %H:%M WIB")
+    report_time = datetime.now(WIB).strftime("%d %B %Y | %H:%M WIB")
 
-    if message.from_user:
-        reporter = message.from_user
-        reporter_repr = f"{reporter.mention} (`{reporter.id}`)"
-        reporter_id = reporter.id
-    else:
-        sender = message.sender_chat
-        reporter_repr = f"{sender.title} (channel) (`{sender.id}`)"
-        reporter_id = sender.id
+    reporter = message.from_user or message.sender_chat
+    reporter_repr = f"{reporter.mention if hasattr(reporter, 'mention') else reporter.title} (`{reporter.id}`)"
+    reporter_id = reporter.id
 
     chat = message.chat
     chat_name = await safe_get_chat_name(client, chat)
@@ -117,7 +101,7 @@ async def report_issue(client, message):
         "chat_id": chat_id,
         "chat_name": chat_name,
         "problem": problem,
-        "time": datetime.now(),
+        "time": datetime.now(WIB),
         "solved": False,
     }
 
@@ -132,13 +116,13 @@ async def report_issue(client, message):
                     "chat_name": chat_name,
                     "problem": problem,
                     "solved": False,
-                    "created_at": datetime.utcnow(),
+                    "created_at": datetime.now(WIB),
                 }
             )
         except Exception as e:
             print(f"[MongoDB] Gagal menyimpan laporan: {e}")
 
-    # Kirim notifikasi ke tiap admin (PM) dengan tombol yang sudah berisi id log
+    # Kirim notifikasi ke tiap admin
     admins = await fetch_admins(client)
     for admin in admins:
         try:
@@ -152,7 +136,7 @@ async def report_issue(client, message):
                     f"🏷️ Grup/Channel: {chat_name}\n"
                     f"🪪 ID Grup/Channel: <code>{chat_id}</code>\n"
                     f"🕒 {report_time}\n\n"
-                    "Gunakan tombol di bawah untuk menindaklanjuti."
+                    "Klik tombol di bawah untuk membalas."
                 ),
                 reply_markup=InlineKeyboardMarkup(
                     [
@@ -164,16 +148,14 @@ async def report_issue(client, message):
                 ),
             )
         except Exception:
-            # jika gagal kirim ke satu admin, lanjutkan admin lain
             continue
 
     await message.reply_text("✅ Laporan telah dikirim ke tim admin. Mohon tunggu responnya.")
 
 
-# === AKTIVASI TOMBOL PENDING ===
+# === AKTIVASI TOMBOL ===
 @app.on_callback_query(filters.regex(r"^(reply_|done_)pending$"))
 async def handle_pending_action(client, callback_query: CallbackQuery):
-    # ubah markup pesan log (di LOGGER_ID) jadi tombol bereferensi id
     log_msg_id = callback_query.message.id
     new_kb = InlineKeyboardMarkup(
         [
@@ -190,197 +172,123 @@ async def handle_pending_action(client, callback_query: CallbackQuery):
     await callback_query.answer("✅ Tombol diaktifkan.", show_alert=False)
 
 
-# === HANDLER UTAMA: REPLY / DONE (menggunakan id) ===
-@app.on_callback_query(filters.regex(r"^(reply_|done_)\d+"))
-async def handle_report_action(client, callback_query: CallbackQuery):
-    data = callback_query.data
+# === SISTEM BALASAN DENGAN /reply ===
+reply_context = {}  # {admin_id: log_msg_id}
+
+@app.on_callback_query(filters.regex(r"^reply_\d+$"))
+async def prepare_reply(client, callback_query: CallbackQuery):
     admin = callback_query.from_user
+    log_msg_id = int(callback_query.data.split("_")[1])
+
+    if log_msg_id not in pending_reports:
+        return await callback_query.answer("❌ Laporan tidak ditemukan.", show_alert=True)
+
+    reply_context[admin.id] = log_msg_id
+    await client.send_message(
+        admin.id,
+        "💬 Silakan kirim balasanmu dengan format:\n\n"
+        "<code>/reply Pesan balasan kamu</code>\n\n"
+        "Contoh:\n<code>/reply Sudah kami tangani, terima kasih.</code>",
+    )
+    await callback_query.answer("📩 Silakan kirim /reply di DM bot.", show_alert=False)
+
+
+@app.on_message(filters.command("reply") & filters.private)
+async def admin_reply(client, message):
+    admin_id = message.from_user.id
+    if admin_id not in reply_context:
+        return await message.reply_text("❗ Kamu belum memilih laporan untuk dibalas.\nKlik dulu tombol 🔁 di pesan laporan.")
+
+    log_msg_id = reply_context[admin_id]
+    info = pending_reports.get(log_msg_id)
+    if not info:
+        return await message.reply_text("⚠️ Laporan sudah tidak tersedia atau kadaluarsa.")
+
+    reply_text = message.text.split(None, 1)[1] if len(message.command) > 1 else None
+    if not reply_text:
+        return await message.reply_text("❗ Gunakan format:\n`/reply <pesan>`")
+
+    text_to_send = (
+        f"💬 <b>Balasan dari Admin:</b>\n\n"
+        f"{reply_text}\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"👨‍💻 <b>Admin:</b> {message.from_user.mention}\n"
+        f"👤 <b>Untuk Pelapor:</b> <a href='tg://user?id={info['user_id']}'>Pelapor</a>"
+    )
+
+    # kirim ke grup pelapor
     try:
-        action, rest = data.split("_", 1)
-        log_msg_id = int(rest)
+        await client.send_photo(info["chat_id"], photo=LOGO_URL, caption=text_to_send)
+    except Exception as e:
+        await message.reply_text(f"⚠️ Gagal kirim ke grup pelapor: {e}")
+        return
+
+    # kirim ke DM pelapor
+    try:
+        await client.send_photo(info["user_id"], photo=LOGO_URL, caption=text_to_send)
     except Exception:
-        return await callback_query.answer("Callback invalid.", show_alert=True)
+        pass
+
+    # update log
+    try:
+        old = await client.get_messages(LOGGER_ID, log_msg_id)
+        new_caption = (old.caption or "") + f"\n\n💬 <b>Dibalas oleh:</b> {message.from_user.mention}"
+        await client.edit_message_caption(LOGGER_ID, log_msg_id, caption=new_caption)
+    except Exception:
+        pass
+
+    del reply_context[admin_id]
+    await message.reply_text("✅ Balasan berhasil dikirim ke pelapor dan grup asal.")
+
+
+# === PENANDA SELESAI ===
+@app.on_callback_query(filters.regex(r"^done_\d+$"))
+async def mark_done(client, callback_query: CallbackQuery):
+    admin = callback_query.from_user
+    log_msg_id = int(callback_query.data.split("_")[1])
 
     info = pending_reports.get(log_msg_id)
     if not info:
         return await callback_query.answer("❌ Laporan tidak ditemukan.", show_alert=True)
 
-    # === TANDAI SELESAI ===
-    if action == "done":
-        if info["solved"]:
-            return await callback_query.answer("Sudah diselesaikan.", show_alert=True)
-        info["solved"] = True
-        if reports_col:
-            try:
-                await reports_col.update_one({"log_msg_id": log_msg_id}, {"$set": {"solved": True}})
-            except Exception:
-                pass
+    if info["solved"]:
+        return await callback_query.answer("Sudah diselesaikan.", show_alert=True)
+
+    info["solved"] = True
+    if reports_col:
         try:
-            # edit caption di log untuk menandai penyelesaian
-            old_msg = await client.get_messages(LOGGER_ID, log_msg_id)
-            new_caption = (old_msg.caption or "") + f"\n\n✅ <b>Masalah diselesaikan oleh:</b> {admin.mention}"
-            await client.edit_message_caption(LOGGER_ID, log_msg_id, caption=new_caption)
+            await reports_col.update_one({"log_msg_id": log_msg_id}, {"$set": {"solved": True}})
         except Exception:
             pass
-
-        # coba PM pelapor kalau bisa
-        try:
-            await client.send_photo(
-                info["user_id"],
-                photo=LOGO_URL,
-                caption=(
-                    "✅ <b>Laporan Kamu Telah Diselesaikan!</b>\n\n"
-                    f"🏷️ Grup/Channel: {info['chat_name']}\n"
-                    f"🪪 ID Grup/Channel: <code>{info['chat_id']}</code>\n"
-                    f"👨‍💻 <b>Ditangani oleh:</b> {admin.mention}\n\n"
-                    "Terima kasih telah melapor 💙"
-                ),
-            )
-        except Exception:
-            pass
-
-        await callback_query.answer("✅ Laporan ditandai selesai.", show_alert=True)
-        return
-
-    # === REPLY: mulai proses tunggu pesan admin tanpa .listen() ===
-    await callback_query.answer("💬 Kirim balasanmu sekarang (DM bot).", show_alert=False)
-
-    prompt = await callback_query.message.reply_text(f"{admin.mention}, kirim teks balasanmu di DM bot. ⏳ 2 menit.")
-
-    # akan menunggu pesan dari admin di private chat (chat.id == admin.id)
-    future = asyncio.get_event_loop().create_future()
-
-    async def _temp_msg_handler(c, m):
-        try:
-            # Pastikan pesan dari admin di private (DM) dan berupa teks
-            if not m.from_user:
-                return
-            if m.from_user.id != admin.id:
-                return
-            if m.chat.id != admin.id:
-                # hanya terima DM
-                return
-            if not getattr(m, "text", None):
-                return
-            if not future.done():
-                future.set_result(m)
-        except Exception:
-            # jangan biarkan handler crash
-            if not future.done():
-                future.set_result(None)
-
-    # buat MessageHandler sementara
-    handler = MessageHandler(_temp_msg_handler, filters.user(admin.id) & filters.private & filters.text)
-    client.add_handler(handler)
 
     try:
-        response = await asyncio.wait_for(future, timeout=120)
-        if response is None:
-            await prompt.edit_text("❌ Terjadi kesalahan saat membaca balasan.")
-            return
-        reply_text = response.text
-    except asyncio.TimeoutError:
-        await prompt.edit_text("⌛ Waktu habis. Tidak ada balasan dikirim.")
-        return
-    finally:
-        # selalu hapus handler sementara supaya tidak menumpuk
-        try:
-            client.remove_handler(handler)
-        except Exception:
-            pass
+        old = await client.get_messages(LOGGER_ID, log_msg_id)
+        new_caption = (old.caption or "") + f"\n\n✅ <b>Masalah diselesaikan oleh:</b> {admin.mention}"
+        await client.edit_message_caption(LOGGER_ID, log_msg_id, caption=new_caption)
+    except Exception:
+        pass
 
-    # === PREVIEW & KONFIRMASI ===
-    preview = (
-        f"📝 <b>Pratinjau Balasan:</b>\n\n"
-        f"{reply_text}\n\n"
-        "Apakah ingin dikirim ke pelapor?"
-    )
     try:
-        confirm_msg = await client.send_message(
-            admin.id,
-            preview,
-            reply_markup=InlineKeyboardMarkup(
-                [
-                    [
-                        InlineKeyboardButton("✅ Kirim", callback_data=f"confirm_send_{log_msg_id}"),
-                        InlineKeyboardButton("❌ Batal", callback_data=f"cancel_send_{log_msg_id}"),
-                    ]
-                ]
+        await client.send_photo(
+            info["user_id"],
+            photo=LOGO_URL,
+            caption=(
+                "✅ <b>Laporan Kamu Telah Diselesaikan!</b>\n\n"
+                f"🏷️ Grup/Channel: {info['chat_name']}\n"
+                f"🪪 ID Grup/Channel: <code>{info['chat_id']}</code>\n"
+                f"👨‍💻 <b>Ditangani oleh:</b> {admin.mention}\n\n"
+                "Terima kasih telah melapor 💙"
             ),
         )
-    except Exception as e:
-        await prompt.edit_text(f"⚠️ Gagal tampilkan preview: {e}")
-        return
+    except Exception:
+        pass
 
-    # simpan pending reply pada laporan
-    pending_reports[log_msg_id]["pending_reply"] = {
-        "admin_id": admin.id,
-        "text": reply_text,
-        "confirm_msg_id": confirm_msg.id,
-    }
-
-    await prompt.edit_text("✅ Balasan diterima. Silakan konfirmasi pada preview di DM.")
+    await callback_query.answer("✅ Laporan ditandai selesai.", show_alert=True)
 
 
-# === KONFIRMASI KIRIM / BATAL ===
-@app.on_callback_query(filters.regex(r"^(confirm_send_|cancel_send_)\d+"))
-async def handle_confirmation(client, callback_query: CallbackQuery):
-    data = callback_query.data
-    admin = callback_query.from_user
-    action, msg_id = data.split("_", 1)
-    log_msg_id = int(msg_id)
-
-    info = pending_reports.get(log_msg_id)
-    if not info or "pending_reply" not in info:
-        return await callback_query.answer("Data tidak ditemukan.", show_alert=True)
-
-    reply = info["pending_reply"]
-
-    if reply["admin_id"] != admin.id:
-        return await callback_query.answer("❌ Kamu bukan pengirim balasan ini.", show_alert=True)
-
-    # Batal
-    if action.startswith("cancel_send_"):
-        try:
-            await client.edit_message_text(admin.id, reply["confirm_msg_id"], "❌ Balasan dibatalkan.")
-        except Exception:
-            pass
-        del info["pending_reply"]
-        return await callback_query.answer("❌ Balasan dibatalkan.", show_alert=True)
-
-    # Kirim balasan ke grup pelapor
-    text_to_send = (
-        f"💬 <b>Balasan dari Admin:</b>\n\n"
-        f"{reply['text']}\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"👨‍💻 <b>Admin:</b> {admin.mention}\n"
-        f"👤 <b>Untuk Pelapor:</b> <a href='tg://user?id={info['user_id']}'>Pelapor</a>"
-    )
-
-    try:
-        await client.send_photo(info["chat_id"], photo=LOGO_URL, caption=text_to_send)
-        try:
-            await client.edit_message_text(admin.id, reply["confirm_msg_id"], "✅ Balasan berhasil dikirim ke grup pelapor.")
-        except Exception:
-            pass
-    except Exception as e:
-        try:
-            await client.edit_message_text(admin.id, reply["confirm_msg_id"], f"⚠️ Gagal kirim ke grup: {e}")
-        except Exception:
-            pass
-        return await callback_query.answer("⚠️ Gagal mengirim balasan.", show_alert=True)
-    finally:
-        # bersihkan pending
-        if "pending_reply" in info:
-            del info["pending_reply"]
-
-    await callback_query.answer("✅ Balasan dikirim ke grup pelapor.", show_alert=True)
-
-
-# === AUTO CLEAN + RINGKASAN HARIAN (22:00 WIB Surabaya) ===
+# === AUTO CLEAN + RINGKASAN 22:00 WIB ===
 async def auto_clean_reports(client):
     while True:
-        now_server = datetime.now()
         total, solved, expired = 0, 0, 0
         expired_ids = []
 
@@ -388,7 +296,7 @@ async def auto_clean_reports(client):
             total += 1
             if info.get("solved"):
                 solved += 1
-            if datetime.now() - info["time"] > timedelta(hours=24):
+            if datetime.now(WIB) - info["time"] > timedelta(hours=24):
                 expired_ids.append(msg_id)
 
         for msg_id in expired_ids:
@@ -404,12 +312,11 @@ async def auto_clean_reports(client):
                 except Exception:
                     pass
 
-        # Ringkasan harian 22:00 WIB (Asia/Jakarta / UTC+7)
-        wib = datetime.now(timezone(timedelta(hours=7)))
-        if wib.hour == 22 and wib.minute == 0:
+        wib_now = datetime.now(WIB)
+        if wib_now.hour == 22 and wib_now.minute == 0:
             summary = (
                 "🕙 <b>RINGKASAN HARIAN — Onlyforacha ✘ Bot</b>\n"
-                f"📅 <b>{wib.strftime('%d %B %Y | %H:%M WIB')}</b>\n"
+                f"📅 <b>{wib_now.strftime('%d %B %Y | %H:%M WIB')}</b>\n"
                 "━━━━━━━━━━━━━━━━━━━━━━\n"
                 f"📥 <b>Total Laporan:</b> {total}\n"
                 f"✅ <b>Diselesaikan:</b> {solved}\n"
@@ -421,26 +328,18 @@ async def auto_clean_reports(client):
                 await client.send_message(LOGGER_ID, summary)
             except Exception as e:
                 print(f"[SummaryError] {e}")
-            # pastikan tidak mengirim beberapa kali dalam menit yang sama
             await asyncio.sleep(60)
 
         await asyncio.sleep(60)
 
 
-@app.on_message(filters.command("start"))
-async def start_auto_task(client, message):
-    # jalankan auto-clean & ringkasan
-    asyncio.create_task(auto_clean_reports(client))
-    await message.reply_text("✅ Auto-clean & laporan harian (22:00 WIB) aktif.")
-
-
 __MODULE__ = "Admin"
 __HELP__ = """
-**📣 Fitur Report Admin (Lengkap + MongoDB + Konfirmasi + Ringkasan Harian 22:00 WIB)**
+**📣 Fitur Report Admin (vFinal — Timezone Surabaya / WIB)**
 
-- `/report <masalah>` → kirim laporan ke grup log & notifikasi admin
-- Admin bisa balas via bot (DM) → preview → konfirmasi → kirim ke grup pelapor (mention)
-- Tandai selesai sinkron MongoDB
-- Auto hapus laporan lama (24 jam)
-- Ringkasan harian jam 22:00 WIB (Surabaya / Asia/Jakarta)
+- `/report <masalah>` → Kirim laporan ke grup log & admin.
+- Admin klik 🔁 lalu DM bot dengan `/reply <pesan>` untuk membalas.
+- Balasan otomatis dikirim ke grup asal & DM pelapor.
+- Admin juga bisa klik ✅ untuk menandai laporan selesai.
+- Auto hapus laporan lama (24 jam) + Ringkasan harian 22:00 WIB.
 """
