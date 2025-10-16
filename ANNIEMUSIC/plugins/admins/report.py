@@ -1,10 +1,9 @@
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pyrogram import filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 import os
 from motor.motor_asyncio import AsyncIOMotorClient
-
 from ANNIEMUSIC import app
 
 # === KONFIGURASI ===
@@ -97,6 +96,7 @@ async def report_issue(client, message):
         "user_id": reporter_id,
         "chat_id": chat_id,
         "chat_name": chat_name,
+        "problem": problem,
         "time": datetime.now(),
         "solved": False,
     }
@@ -143,28 +143,21 @@ async def report_issue(client, message):
     await message.reply_text("✅ Laporan telah dikirim ke tim admin. Mohon tunggu responnya.")
 
 
-# === HANDLER UNTUK PENDING ===
+# === AKTIVASI TOMBOL PENDING ===
 @app.on_callback_query(filters.regex(r"^(reply_|done_)pending$"))
 async def handle_pending_action(client, callback_query: CallbackQuery):
-    data = callback_query.data
-    action = data.split("_", 1)[0]
-    message = callback_query.message
-    log_msg_id = message.id
-
+    log_msg_id = callback_query.message.id
     new_kb = InlineKeyboardMarkup(
         [[
             InlineKeyboardButton("🔁 Balas via Bot", callback_data=f"reply_{log_msg_id}"),
             InlineKeyboardButton("✅ Tandai Selesai", callback_data=f"done_{log_msg_id}"),
         ]]
     )
-    try:
-        await client.edit_message_reply_markup(LOGGER_ID, log_msg_id, reply_markup=new_kb)
-    except Exception:
-        pass
+    await client.edit_message_reply_markup(LOGGER_ID, log_msg_id, reply_markup=new_kb)
     await callback_query.answer("✅ Tombol diaktifkan.", show_alert=False)
 
 
-# === HANDLER UTAMA (REPLY & DONE) ===
+# === BALAS / SELESAI ===
 @app.on_callback_query(filters.regex(r"^(reply_|done_)\d+"))
 async def handle_report_action(client, callback_query: CallbackQuery):
     data = callback_query.data
@@ -179,6 +172,7 @@ async def handle_report_action(client, callback_query: CallbackQuery):
     if not info:
         return await callback_query.answer("❌ Laporan tidak ditemukan.", show_alert=True)
 
+    # === TANDAI SELESAI ===
     if action == "done":
         if info["solved"]:
             return await callback_query.answer("Sudah diselesaikan.", show_alert=True)
@@ -200,7 +194,7 @@ async def handle_report_action(client, callback_query: CallbackQuery):
             pass
         return
 
-    # === Balas via bot dengan konfirmasi ===
+    # === BALAS VIA BOT ===
     await callback_query.answer("💬 Kirim balasanmu sekarang...", show_alert=False)
     prompt = await callback_query.message.reply_text(f"{admin.mention}, kirim teks balasanmu. ⏳ 2 menit.")
     try:
@@ -210,9 +204,16 @@ async def handle_report_action(client, callback_query: CallbackQuery):
         await prompt.edit_text("⌛ Waktu habis.")
         return
     reply_text = response.text
+
+    # === KONFIRMASI / PRATINJAU ===
+    preview = (
+        f"📝 <b>Pratinjau Balasan:</b>\n\n"
+        f"{reply_text}\n\n"
+        "Apakah ingin dikirim ke pelapor?"
+    )
     confirm = await client.send_message(
         admin.id,
-        f"📝 <b>Pratinjau:</b>\n\n{reply_text}\n\nKirim ke grup pelapor?",
+        preview,
         reply_markup=InlineKeyboardMarkup(
             [[
                 InlineKeyboardButton("✅ Kirim", callback_data=f"confirm_send_{log_msg_id}"),
@@ -227,7 +228,7 @@ async def handle_report_action(client, callback_query: CallbackQuery):
     }
 
 
-# === HANDLER KONFIRMASI KIRIM ===
+# === KONFIRMASI KIRIM ===
 @app.on_callback_query(filters.regex(r"^(confirm_send_|cancel_send_)\d+"))
 async def handle_confirmation(client, callback_query: CallbackQuery):
     data = callback_query.data
@@ -243,30 +244,37 @@ async def handle_confirmation(client, callback_query: CallbackQuery):
     if reply["admin_id"] != admin.id:
         return await callback_query.answer("❌ Bukan balasan kamu.", show_alert=True)
 
+    # === BATAL ===
     if action.startswith("cancel_send_"):
         await client.edit_message_text(admin.id, reply["confirm_msg_id"], "❌ Balasan dibatalkan.")
         del info["pending_reply"]
         return await callback_query.answer("Dibatalkan.", show_alert=True)
 
+    # === KIRIM BALASAN ===
     text_to_send = (
-        f"📬 <b>Balasan dari Admin:</b>\n\n{reply['text']}\n\n"
+        f"💬 <b>Balasan dari Admin:</b>\n\n"
+        f"{reply['text']}\n\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"💠 <b>Dikirim oleh:</b> {admin.mention}\n"
+        f"👨‍💻 <b>Admin:</b> {admin.mention}\n"
         f"👤 <b>Untuk:</b> <a href='tg://user?id={info['user_id']}'>Pelapor</a>"
     )
-    await client.send_photo(info["chat_id"], photo=LOGO_URL, caption=text_to_send)
-    await client.edit_message_text(admin.id, reply["confirm_msg_id"], "✅ Balasan berhasil dikirim.")
-    del info["pending_reply"]
+    try:
+        await client.send_photo(info["chat_id"], photo=LOGO_URL, caption=text_to_send)
+        await client.edit_message_text(admin.id, reply["confirm_msg_id"], "✅ Balasan berhasil dikirim.")
+    except Exception as e:
+        await client.edit_message_text(admin.id, reply["confirm_msg_id"], f"⚠️ Gagal kirim: {e}")
+    finally:
+        del info["pending_reply"]
     await callback_query.answer("Dikirim ke grup pelapor.", show_alert=False)
 
 
-# === AUTO CLEAN + RINGKASAN HARIAN ===
+# === AUTO CLEAN + RINGKASAN HARIAN (22:00 WIB) ===
 async def auto_clean_reports(client):
     while True:
         now = datetime.now()
         total, solved, expired = 0, 0, 0
-
         expired_ids = []
+
         for msg_id, info in list(pending_reports.items()):
             total += 1
             if info.get("solved"):
@@ -284,9 +292,8 @@ async def auto_clean_reports(client):
             if reports_col:
                 await reports_col.delete_one({"log_msg_id": msg_id})
 
-        # Kirim ringkasan jam 22:00 WIB (Zona Waktu Surabaya / Asia/Jakarta)
-        from datetime import timezone, timedelta
-        wib = datetime.now(timezone(timedelta(hours=7)))  # UTC+7
+        # Ringkasan harian 22:00 WIB
+        wib = datetime.now(timezone(timedelta(hours=7)))
         if wib.hour == 22 and wib.minute == 0:
             summary = (
                 "🕙 <b>RINGKASAN HARIAN — Onlyforacha ✘ Bot</b>\n"
@@ -302,10 +309,7 @@ async def auto_clean_reports(client):
                 await client.send_message(LOGGER_ID, summary)
             except Exception as e:
                 print(f"[SummaryError] {e}")
-            try:
-                await client.send_message(LOGGER_ID, summary)
-            except Exception:
-                pass
+            await asyncio.sleep(60)
 
         await asyncio.sleep(60)
 
@@ -314,16 +318,3 @@ async def auto_clean_reports(client):
 async def start_auto_task(client, message):
     asyncio.create_task(auto_clean_reports(client))
     await message.reply_text("✅ Auto-clean & laporan harian aktif.")
-
-
-__MODULE__ = "Admin"
-__HELP__ = """
-**📣 Fitur Report Admin (Lengkap + MongoDB + Konfirmasi + Ringkasan Harian)**
-
-- `/report <masalah>` → kirim laporan ke log + admin
-- Admin bisa balas via bot dengan konfirmasi ✅❌
-- Balasan dikirim ke grup pelapor
-- Tandai selesai sinkron MongoDB
-- Auto hapus laporan lama (24 jam)
-- Ringkasan harian jam 16:59 WIB
-"""
