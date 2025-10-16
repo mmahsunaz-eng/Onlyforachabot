@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from pyrogram import filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 import os
-from motor.motor_asyncio import AsyncIOMotorClient
+from motor.motor_asyncio import AsyncIOMotorClient  # 🧩 untuk MongoDB
 
 # pakai app utama dari ANNIEMUSIC
 from ANNIEMUSIC import app
@@ -36,7 +36,6 @@ async def safe_get_chat_name(client, chat):
         if getattr(chat, "last_name", None):
             name += f" {chat.last_name}"
     return name
-
 
 async def fetch_admins(client):
     """Kembalikan list User objek admin (exclude bot accounts)."""
@@ -72,7 +71,6 @@ async def report_issue(client, message):
     chat_name = await safe_get_chat_name(client, chat)
     chat_id = chat.id
 
-    # === DESAIN LAPORAN DITERIMA ===
     caption = (
         "🚨⚠️ <b>ＰＥＲＨＡＴＩＡＮ</b> ⚠️🚨\n\n"
         "<b>Laporan Masalah Baru Telah Diterima!</b>\n\n"
@@ -105,7 +103,7 @@ async def report_issue(client, message):
         await message.reply_text(f"⚠️ Gagal mengirim laporan ke log: {e}")
         return
 
-    # Simpan ke RAM
+    # Simpan detail laporan ke RAM
     pending_reports[sent.id] = {
         "user_id": reporter_id,
         "chat_id": chat_id,
@@ -114,7 +112,7 @@ async def report_issue(client, message):
         "solved": False,
     }
 
-    # Simpan ke MongoDB
+    # 🧩 Simpan juga ke MongoDB
     if reports_col:
         try:
             await reports_col.insert_one(
@@ -131,7 +129,6 @@ async def report_issue(client, message):
         except Exception as e:
             print(f"[MongoDB] Gagal menyimpan laporan: {e}")
 
-    # Update tombol dinamis
     try:
         new_kb = InlineKeyboardMarkup(
             [
@@ -145,14 +142,21 @@ async def report_issue(client, message):
     except Exception:
         pass
 
-    # Kirim notifikasi ke admin
     admins = await fetch_admins(client)
     for admin in admins:
         try:
             await client.send_photo(
                 admin.id,
                 photo=LOGO_URL,
-                caption=caption,
+                caption=(
+                    f"🚨 <b>Laporan Baru Masuk!</b>\n\n"
+                    f"👤 Dari: {reporter_repr}\n"
+                    f"💬 Masalah: <i>{problem}</i>\n"
+                    f"🏷️ Grup/Channel: {chat_name}\n"
+                    f"🪪 ID Grup/Channel: <code>{chat_id}</code>\n"
+                    f"🕒 {report_time}\n\n"
+                    "Gunakan tombol di bawah untuk menindaklanjuti."
+                ),
                 reply_markup=InlineKeyboardMarkup(
                     [
                         [
@@ -165,9 +169,7 @@ async def report_issue(client, message):
         except Exception:
             continue
 
-    await message.reply_text(
-        "✅ Laporan kamu telah dikirim ke tim admin.\nMohon tunggu, masalah kamu akan segera ditangani."
-    )
+    await message.reply_text("✅ Laporan kamu telah dikirim ke tim admin.\nMohon tunggu, masalah kamu akan segera ditangani.")
 
 
 # === CALLBACK HANDLER ===
@@ -186,58 +188,55 @@ async def handle_report_action(client, callback_query: CallbackQuery):
     if not info:
         return await callback_query.answer("Laporan tidak ditemukan atau sudah kadaluwarsa.", show_alert=True)
 
-    # === Jika Ditandai Selesai ===
     if action == "done":
         if info["solved"]:
-            return await callback_query.answer("Laporan ini sudah selesai.", show_alert=True)
+            return await callback_query.answer("Laporan ini sudah ditandai selesai.", show_alert=True)
+
         info["solved"] = True
 
-        # Update MongoDB
+        # Update di MongoDB juga
         if reports_col:
             try:
                 await reports_col.update_one({"log_msg_id": log_msg_id}, {"$set": {"solved": True}})
             except Exception:
                 pass
 
-        # Update di log
         try:
-            log_msg = await client.get_messages(LOGGER_ID, log_msg_id)
             await client.edit_message_caption(
                 LOGGER_ID,
                 log_msg_id,
-                caption=log_msg.caption
+                caption=(await client.get_messages(LOGGER_ID, log_msg_id)).caption
                 + f"\n\n✅ <b>Masalah diselesaikan oleh:</b> {admin.mention}"
             )
         except Exception:
             pass
 
-        # Kirim notifikasi ke pelapor
         try:
             await client.send_photo(
                 info["user_id"],
                 photo=LOGO_URL,
-                caption=(
-                    "✅ <b>Masalah Kamu Telah Diselesaikan!</b>\n\n"
-                    f"🏷️ <b>Grup/Channel:</b> {info['chat_name']}\n"
-                    f"🪪 <b>ID:</b> <code>{info['chat_id']}</code>\n"
-                    f"👨‍💻 <b>Ditangani oleh:</b> {admin.mention}\n\n"
-                    "━━━━━━━━━━━━━━━━━━━━━━\n"
-                    "💠 <b>Pesan ini dikirim oleh:</b> ᴏꜰꜰɪᴄɪᴀʟ 「 Oɴʟʏғᴏʀᴀᴄʜᴀ ✘ ʙᴏᴛ 」"
-                ),
-            )
+                caption = (
+    "✅💠 <b>ＬＡＰＯＲＡＮ ＳＥＬＥＳＡＩ</b> 💠✅\n\n"
+    "<b>Laporan Kamu Telah Diselesaikan!</b>\n\n"
+    f"🏷️ <b>Grup/Channel:</b> {info['chat_name']}\n"
+    f"🪪 <b>ID Grup/Channel:</b> <code>{info['chat_id']}</code>\n"
+    f"👨‍💻 <b>Ditangani oleh:</b> {admin.mention}\n"
+    "━━━━━━━━━━━━━━━━━━━━━━\n"
+    "💙 <b>Terima kasih telah melapor!</b>\n"
+    "🙏 <i>Kami menghargai kontribusimu dalam menjaga komunitas tetap aman dan nyaman.</i>"
+        ) 
+                
         except Exception:
             pass
 
         await callback_query.answer("✅ Laporan ditandai selesai.", show_alert=True)
         return
 
-    # === Jika Balas via Bot ===
     if action == "reply":
         await callback_query.answer("💬 Kirim pesan balasanmu sekarang...", show_alert=False)
         prompt_msg = await callback_query.message.reply_text(
-            f"💬 {admin.mention}, kirim balasanmu untuk pelapor.\n⏳ Waktu 2 menit."
+            f"💬 {admin.mention}, silakan kirim balasanmu untuk pelapor.\n⏳ Kamu punya waktu 2 menit."
         )
-
         try:
             response = await client.listen(callback_query.message.chat.id, timeout=120)
         except asyncio.TimeoutError:
@@ -245,23 +244,67 @@ async def handle_report_action(client, callback_query: CallbackQuery):
             return
 
         if not getattr(response, "text", None):
-            return await prompt_msg.edit_text("❌ Hanya pesan teks yang dapat dikirim.")
-
-        # === Desain Balasan Admin ===
-        reply_caption = (
-            "📬 <b>ＢＡＬＡＳＡＮ ＤＡＲＩ ＡＤＭＩＮ</b> 💬\n\n"
-            f"{response.text}\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"👨‍💻 <b>Dikirim oleh:</b> {admin.mention}\n"
-            "💠 <b>Melalui:</b> ᴏꜰꜰɪᴄɪᴀʟ 「 Oɴʟʏғᴏʀᴀᴄʜᴀ ✘ ʙᴏᴛ 」"
-        )
+            return await prompt_msg.edit_text("❌ Hanya pesan teks yang bisa dikirim.")
 
         try:
-            await client.send_photo(info["user_id"], photo=LOGO_URL, caption=reply_caption)
+            await client.send_photo(
+                info["user_id"],
+                photo=LOGO_URL,
+                caption=(
+                    "📬 <b>Balasan dari Admin:</b>\n\n"
+                    f"{response.text}\n\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"💠 <b>Dikirim oleh:</b> {admin.mention}"
+                ),
+            )
             await prompt_msg.edit_text("✅ Balasan berhasil dikirim ke pelapor.")
         except Exception as e:
-            await prompt_msg.edit_text(f"⚠️ Gagal mengirim balasan: {e}")
+            await prompt_msg.edit_text(f"⚠️ Gagal mengirim balasan ke pelapor: {e}")
 
+# === COMMAND /reply ===
+@app.on_message(filters.command("reply"))
+async def manual_reply_to_report(client, message):
+    if len(message.command) < 3:
+        return await message.reply_text("❗ Gunakan format:\n`/reply <log_msg_id> <pesan>`")
+
+    try:
+        log_msg_id = int(message.command[1])
+        reply_text = message.text.split(None, 2)[2]
+    except Exception:
+        return await message.reply_text("⚠️ Format salah. Contoh:\n`/reply 12345 Terima kasih, sudah kami tindaklanjuti.`")
+
+    info = pending_reports.get(log_msg_id)
+    if not info and reports_col:
+        data = await reports_col.find_one({"log_msg_id": log_msg_id})
+        if data:
+            info = {"chat_id": data["chat_id"], "chat_name": data["chat_name"], "user_id": data["user_id"]}
+
+    if not info:
+        return await message.reply_text("❌ Laporan tidak ditemukan atau sudah kadaluwarsa.")
+
+    chat_id = info["chat_id"]
+    user_id = info["user_id"]
+    admin = message.from_user
+
+    try:
+        chat_messages = await client.get_chat_history(chat_id, limit=10)
+        reply_to_msg_id = next((msg.id for msg in chat_messages if msg.from_user and msg.from_user.id == user_id), None)
+
+        await client.send_photo(
+            chat_id,
+            photo=LOGO_URL,
+            caption=(
+                "📬 <b>Balasan dari Admin:</b>\n\n"
+                f"{reply_text}\n\n"
+                "━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"💠 <b>Dikirim oleh:</b> {admin.mention}"
+            ),
+            reply_to_message_id=reply_to_msg_id,
+        )
+
+        await message.reply_text(f"✅ Balasan dikirim ke grup asal laporan: <b>{info['chat_name']}</b>")
+    except Exception as e:
+        await message.reply_text(f"⚠️ Gagal mengirim balasan ke grup: {e}")
 
 # === AUTO CLEANUP & DAILY SUMMARY ===
 async def auto_clean_reports(client):
@@ -285,22 +328,23 @@ async def auto_clean_reports(client):
             del pending_reports[msg_id]
             expired_count += 1
 
+            # Hapus dari Mongo juga
             if reports_col:
                 try:
                     await reports_col.delete_one({"log_msg_id": msg_id})
                 except Exception:
                     pass
 
-        # === Ringkasan Harian Jam 22:00 WIB (15:00 UTC) ===
-        if now.hour == 15 and now.minute == 0:
+        if now.hour == 16 and now.minute == 59:
             summary = (
-                "🕘 <b>ＲＩＮＧＫＡＳＡＮ ＨＡＲＩＡＮ</b> 🕙\n\n"
+                "🕘 <b>Laporan Harian — Onlyforacha ✘ Bot</b>\n"
                 f"📅 <b>{now.strftime('%d %B %Y | %H:%M WIB')}</b>\n"
                 "━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"📥 <b>Total Laporan:</b> {total}\n"
+                f"📥 <b>Laporan Masuk (saat cek):</b> {total}\n"
                 f"✅ <b>Diselesaikan:</b> {solved}\n"
-                f"⌛ <b>Kedaluwarsa:</b> {expired_count}\n"
+                f"⌛ <b>Kedaluwarsa (24 jam):</b> {expired_count}\n"
                 "━━━━━━━━━━━━━━━━━━━━━━\n"
+                "📡 <b>Status:</b> Stabil ✅\n"
                 "💠 <b>Dikirim otomatis oleh:</b> ᴏꜰꜰɪᴄɪᴀʟ 「 Oɴʟʏғᴏʀᴀᴄʜᴀ ✘ ʙᴏᴛ 」"
             )
             try:
@@ -319,11 +363,14 @@ async def start_auto_task(client, message):
 
 __MODULE__ = "Admin"
 __HELP__ = """
-**📣 Fitur Report Admin (Auto & MongoDB)**
-• /report <masalah> → Kirim laporan ke admin
-• Auto PM admin + log laporan
-• Balasan admin via bot langsung ke pelapor
-• Tandai selesai laporan
-• Auto hapus laporan 24 jam
-• Ringkasan harian otomatis jam 22.00 WIB
+**📣 Fitur Report Admin (Auto & PM + MongoDB):**
+
+/report <masalah>
+Kirim laporan masalah langsung ke grup log & admin.
+
+/reply <log_msg_id> <pesan>
+Balas laporan langsung ke grup asal pelapor.
+
+/start
+Aktifkan auto-clean & notifikasi admin harian.
 """
