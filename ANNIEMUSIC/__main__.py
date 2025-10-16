@@ -24,14 +24,28 @@ from motor.motor_asyncio import AsyncIOMotorClient
 
 # === KONFIGURASI MONGODB ===
 MONGO_URL = os.getenv("MONGO_DB_URI", None)
-mongo_client = AsyncIOMotorClient(MONGO_URL) if MONGO_URL else None
-db = mongo_client["ANNIEMUSIC"] if mongo_client else None
-reports_col = db["reports"] if db else None
+
+if not MONGO_URL:
+    LOGGER("MongoDB").warning("⚠️ Environment variable MONGO_DB_URI tidak ditemukan.")
+    mongo_client = None
+    db = None
+    reports_col = None
+else:
+    try:
+        mongo_client = AsyncIOMotorClient(MONGO_URL)
+        db = mongo_client["ANNIEMUSIC"]
+        reports_col = db["Annie"]
+        LOGGER("MongoDB").info("✅ MongoDB client berhasil diinisialisasi dan terhubung.")
+    except Exception as e:
+        LOGGER("MongoDB").error(f"❌ Gagal menginisialisasi MongoDB client: {e}")
+        mongo_client = None
+        db = None
+        reports_col = None
 
 
 async def setup_ttl_index():
     """Buat TTL Index agar laporan otomatis terhapus setelah 24 jam."""
-    if not reports_col:
+    if reports_col is None:
         LOGGER("MongoDB").warning("⚠️ URL MongoDB tidak diatur — TTL Index dilewati.")
         return "⚠️ Tidak terkoneksi"
 
