@@ -1,12 +1,13 @@
 import os
 import traceback
+import logging
 from random import randint
 from typing import Union
 
 from pyrogram.types import InlineKeyboardMarkup
 
 import config
-from ANNIEMUSIC import Carbon, YouTube, app, LOGGER
+from ANNIEMUSIC import Carbon, YouTube, app
 from ANNIEMUSIC.core.call import JARVIS
 from ANNIEMUSIC.misc import db
 from ANNIEMUSIC.utils.database import add_active_video_chat, is_active_chat
@@ -16,6 +17,17 @@ from ANNIEMUSIC.utils.pastebin import ANNIEBIN
 from ANNIEMUSIC.utils.stream.queue import put_queue, put_queue_index
 from ANNIEMUSIC.utils.thumbnails import get_thumb
 from ANNIEMUSIC.utils.errors import capture_internal_err
+
+# ==========================================================
+# ✅ Logger lokal agar tidak bentrok dengan ANNIEMUSIC.LOGGER
+# ==========================================================
+LOG = logging.getLogger(__name__)
+LOG.setLevel(logging.INFO)
+handler = logging.StreamHandler()
+formatter = logging.Formatter("[%(levelname)s] %(asctime)s - %(message)s", "%H:%M:%S")
+handler.setFormatter(formatter)
+if not LOG.handlers:
+    LOG.addHandler(handler)
 
 
 @capture_internal_err
@@ -57,8 +69,8 @@ async def stream(
                     search, videoid=search
                 )
             except Exception as e:
-                LOGGER.error(f"[PLAYLIST ERROR] Gagal ambil detail YouTube: {e}")
-                LOGGER.error(traceback.format_exc())
+                LOG.error(f"[PLAYLIST ERROR] Gagal ambil detail YouTube: {e}")
+                LOG.error(traceback.format_exc())
                 continue
 
             if str(duration_min) == "None":
@@ -90,12 +102,12 @@ async def stream(
                         vidid, mystic, video=is_video, videoid=vidid
                     )
                 except Exception as e:
-                    LOGGER.error(f"[STREAM ERROR] Playlist gagal ambil file YouTube: {e}")
-                    LOGGER.error(traceback.format_exc())
+                    LOG.error(f"[STREAM ERROR] Playlist gagal ambil file YouTube: {e}")
+                    LOG.error(traceback.format_exc())
                     raise AssistantErr(_["play_14"])
 
                 if not file_path:
-                    LOGGER.error("[STREAM ERROR] Playlist YouTube file_path kosong!")
+                    LOG.error("[STREAM ERROR] Playlist YouTube file_path kosong!")
                     raise AssistantErr(_["play_14"])
 
                 await JARVIS.join_call(
@@ -142,7 +154,7 @@ async def stream(
             carbon = await Carbon.generate(car, randint(100, 10000000))
             playlist_photo = carbon
         except Exception as e:
-            LOGGER.warning(f"[CARBON WARNING] Gagal generate carbon: {e}")
+            LOG.warning(f"[CARBON WARNING] Gagal generate carbon: {e}")
             playlist_photo = config.PLAYLIST_IMG_URL
         upl = close_markup(_)
         final_position = len(db.get(chat_id) or []) - 1
@@ -170,12 +182,12 @@ async def stream(
                 vidid, mystic, video=is_video, videoid=vidid
             )
         except Exception as e:
-            LOGGER.error(f"[STREAM ERROR] YouTube.download() gagal: {e}")
-            LOGGER.error(traceback.format_exc())
+            LOG.error(f"[STREAM ERROR] YouTube.download() gagal: {e}")
+            LOG.error(traceback.format_exc())
             raise AssistantErr(_["play_14"])
 
         if not file_path:
-            LOGGER.error("[STREAM ERROR] YouTube file_path kosong!")
+            LOG.error("[STREAM ERROR] YouTube file_path kosong!")
             raise AssistantErr(_["play_14"])
 
         if await is_active_chat(chat_id):
@@ -234,11 +246,3 @@ async def stream(
             )
             db[chat_id][0]["mystic"] = run
             db[chat_id][0]["markup"] = "stream"
-
-    # ==========================================================
-    # SOUND CLOUD MODE
-    # ==========================================================
-    elif streamtype == "soundcloud":
-        ...
-        # (blok soundcloud, telegram, live, index tetap sama, tidak perlu diubah)
-        # Kamu cukup pakai yang dari file kamu, bagian atas saja yang diubah untuk logging.
