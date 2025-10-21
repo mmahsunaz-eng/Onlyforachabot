@@ -1,6 +1,4 @@
 import os
-import traceback
-import logging
 from random import randint
 from typing import Union
 
@@ -17,17 +15,6 @@ from ANNIEMUSIC.utils.pastebin import ANNIEBIN
 from ANNIEMUSIC.utils.stream.queue import put_queue, put_queue_index
 from ANNIEMUSIC.utils.thumbnails import get_thumb
 from ANNIEMUSIC.utils.errors import capture_internal_err
-
-# ==========================================================
-# ✅ Logger lokal agar tidak bentrok dengan ANNIEMUSIC.LOGGER
-# ==========================================================
-LOG = logging.getLogger(__name__)
-LOG.setLevel(logging.INFO)
-handler = logging.StreamHandler()
-formatter = logging.Formatter("[%(levelname)s] %(asctime)s - %(message)s", "%H:%M:%S")
-handler.setFormatter(formatter)
-if not LOG.handlers:
-    LOG.addHandler(handler)
 
 
 @capture_internal_err
@@ -53,9 +40,6 @@ async def stream(
     if forceplay:
         await JARVIS.force_stop_stream(chat_id)
 
-    # ==========================================================
-    # PLAYLIST MODE
-    # ==========================================================
     if streamtype == "playlist":
         msg = f"{_['play_19']}\n\n"
         count = 0
@@ -68,9 +52,7 @@ async def stream(
                 title, duration_min, duration_sec, thumbnail, vidid = await YouTube.details(
                     search, videoid=search
                 )
-            except Exception as e:
-                LOG.error(f"[PLAYLIST ERROR] Gagal ambil detail YouTube: {e}")
-                LOG.error(traceback.format_exc())
+            except Exception:
                 continue
 
             if str(duration_min) == "None":
@@ -101,13 +83,9 @@ async def stream(
                     file_path, direct = await YouTube.download(
                         vidid, mystic, video=is_video, videoid=vidid
                     )
-                except Exception as e:
-                    LOG.error(f"[STREAM ERROR] Playlist gagal ambil file YouTube: {e}")
-                    LOG.error(traceback.format_exc())
+                except Exception:
                     raise AssistantErr(_["play_14"])
-
                 if not file_path:
-                    LOG.error("[STREAM ERROR] Playlist YouTube file_path kosong!")
                     raise AssistantErr(_["play_14"])
 
                 await JARVIS.join_call(
@@ -153,8 +131,7 @@ async def stream(
         try:
             carbon = await Carbon.generate(car, randint(100, 10000000))
             playlist_photo = carbon
-        except Exception as e:
-            LOG.warning(f"[CARBON WARNING] Gagal generate carbon: {e}")
+        except Exception:
             playlist_photo = config.PLAYLIST_IMG_URL
         upl = close_markup(_)
         final_position = len(db.get(chat_id) or []) - 1
@@ -167,9 +144,6 @@ async def stream(
             reply_markup=upl,
         )
 
-    # ==========================================================
-    # YOUTUBE MODE
-    # ==========================================================
     elif streamtype == "youtube":
         link = result["link"]
         vidid = result["vidid"]
@@ -181,13 +155,9 @@ async def stream(
             file_path, direct = await YouTube.download(
                 vidid, mystic, video=is_video, videoid=vidid
             )
-        except Exception as e:
-            LOG.error(f"[STREAM ERROR] YouTube.download() gagal: {e}")
-            LOG.error(traceback.format_exc())
+        except Exception:
             raise AssistantErr(_["play_14"])
-
         if not file_path:
-            LOG.error("[STREAM ERROR] YouTube file_path kosong!")
             raise AssistantErr(_["play_14"])
 
         if await is_active_chat(chat_id):
@@ -246,3 +216,235 @@ async def stream(
             )
             db[chat_id][0]["mystic"] = run
             db[chat_id][0]["markup"] = "stream"
+
+    elif streamtype == "soundcloud":
+        file_path = result["filepath"]
+        title = result["title"]
+        duration_min = result["duration_min"]
+        if not file_path:
+            raise AssistantErr(_["play_14"])
+
+        if await is_active_chat(chat_id):
+            await put_queue(
+                chat_id,
+                original_chat_id,
+                file_path,
+                title,
+                duration_min,
+                user_name,
+                streamtype,
+                user_id,
+                "audio",
+            )
+            position = len(db.get(chat_id)) - 1
+            button = aq_markup(_, chat_id)
+            await app.send_message(
+                chat_id=original_chat_id,
+                text=_["queue_4"].format(position, title[:27], duration_min, user_name),
+                reply_markup=InlineKeyboardMarkup(button),
+            )
+        else:
+            if not forceplay:
+                db[chat_id] = []
+            await JARVIS.join_call(chat_id, original_chat_id, file_path, video=False)
+            await put_queue(
+                chat_id,
+                original_chat_id,
+                file_path,
+                title,
+                duration_min,
+                user_name,
+                streamtype,
+                user_id,
+                "audio",
+                forceplay=forceplay,
+            )
+            button = stream_markup(_, chat_id)
+            run = await app.send_photo(
+                original_chat_id,
+                photo=config.SOUNCLOUD_IMG_URL,
+                caption=_["stream_1"].format(
+                    config.SUPPORT_CHAT, title[:23], duration_min, user_name
+                ),
+                reply_markup=InlineKeyboardMarkup(button),
+            )
+            db[chat_id][0]["mystic"] = run
+            db[chat_id][0]["markup"] = "tg"
+
+    elif streamtype == "telegram":
+        file_path = result["path"]
+        link = result["link"]
+        title = (result["title"]).title()
+        duration_min = result["dur"]
+        if not file_path:
+            raise AssistantErr(_["play_14"])
+
+        if await is_active_chat(chat_id):
+            await put_queue(
+                chat_id,
+                original_chat_id,
+                file_path,
+                title,
+                duration_min,
+                user_name,
+                streamtype,
+                user_id,
+                "video" if is_video else "audio",
+            )
+            position = len(db.get(chat_id)) - 1
+            button = aq_markup(_, chat_id)
+            await app.send_message(
+                chat_id=original_chat_id,
+                text=_["queue_4"].format(position, title[:27], duration_min, user_name),
+                reply_markup=InlineKeyboardMarkup(button),
+            )
+        else:
+            if not forceplay:
+                db[chat_id] = []
+            await JARVIS.join_call(chat_id, original_chat_id, file_path, video=is_video)
+            await put_queue(
+                chat_id,
+                original_chat_id,
+                file_path,
+                title,
+                duration_min,
+                user_name,
+                streamtype,
+                user_id,
+                "video" if is_video else "audio",
+                forceplay=forceplay,
+            )
+            if is_video:
+                await add_active_video_chat(chat_id)
+            button = stream_markup(_, chat_id)
+            run = await app.send_photo(
+                original_chat_id,
+                photo=config.TELEGRAM_VIDEO_URL if is_video else config.TELEGRAM_AUDIO_URL,
+                caption=_["stream_1"].format(link, title[:23], duration_min, user_name),
+                reply_markup=InlineKeyboardMarkup(button),
+            )
+            db[chat_id][0]["mystic"] = run
+            db[chat_id][0]["markup"] = "tg"
+
+    elif streamtype == "live":
+        link = result["link"]
+        vidid = result["vidid"]
+        title = (result["title"]).title()
+        thumbnail = result["thumb"]
+        duration_min = "Live Track"
+
+        if await is_active_chat(chat_id):
+            await put_queue(
+                chat_id,
+                original_chat_id,
+                f"live_{vidid}",
+                title,
+                duration_min,
+                user_name,
+                vidid,
+                user_id,
+                "video" if is_video else "audio",
+            )
+            position = len(db.get(chat_id)) - 1
+            button = aq_markup(_, chat_id)
+            await app.send_message(
+                chat_id=original_chat_id,
+                text=_["queue_4"].format(position, title[:27], duration_min, user_name),
+                reply_markup=InlineKeyboardMarkup(button),
+            )
+        else:
+            if not forceplay:
+                db[chat_id] = []
+            n, file_path = await YouTube.video(link)
+            if n == 0:
+                raise AssistantErr(_["str_3"])
+            if not file_path:
+                raise AssistantErr(_["play_14"])
+
+            await JARVIS.join_call(
+                chat_id,
+                original_chat_id,
+                file_path,
+                video=is_video,
+                image=thumbnail or None,
+            )
+            await put_queue(
+                chat_id,
+                original_chat_id,
+                f"live_{vidid}",
+                title,
+                duration_min,
+                user_name,
+                vidid,
+                user_id,
+                "video" if is_video else "audio",
+                forceplay=forceplay,
+            )
+            img = await get_thumb(vidid)
+            button = stream_markup(_, chat_id)
+            run = await app.send_photo(
+                original_chat_id,
+                photo=img,
+                caption=_["stream_1"].format(
+                    f"https://t.me/{app.username}?start=info_{vidid}",
+                    title[:23],
+                    duration_min,
+                    user_name,
+                ),
+                reply_markup=InlineKeyboardMarkup(button),
+            )
+            db[chat_id][0]["mystic"] = run
+            db[chat_id][0]["markup"] = "tg"
+
+    elif streamtype == "index":
+        link = result
+        title = "ɪɴᴅᴇx ᴏʀ ᴍ3ᴜ8 ʟɪɴᴋ"
+        duration_min = "00:00"
+
+        if await is_active_chat(chat_id):
+            await put_queue_index(
+                chat_id,
+                original_chat_id,
+                "index_url",
+                title,
+                duration_min,
+                user_name,
+                link,
+                "video" if is_video else "audio",
+            )
+            position = len(db.get(chat_id)) - 1
+            button = aq_markup(_, chat_id)
+            await mystic.edit_text(
+                text=_["queue_4"].format(position, title[:27], duration_min, user_name),
+                reply_markup=InlineKeyboardMarkup(button),
+            )
+        else:
+            if not forceplay:
+                db[chat_id] = []
+            await JARVIS.join_call(
+                chat_id,
+                original_chat_id,
+                link,
+                video=is_video,
+            )
+            await put_queue_index(
+                chat_id,
+                original_chat_id,
+                "index_url",
+                title,
+                duration_min,
+                user_name,
+                link,
+                "video" if is_video else "audio",
+                forceplay=forceplay,
+            )
+            button = stream_markup(_, chat_id)
+            run = await app.send_photo(
+                original_chat_id,
+                photo=config.STREAM_IMG_URL,
+                caption=_["stream_2"].format(user_name),
+                reply_markup=InlineKeyboardMarkup(button),
+            )
+            db[chat_id][0]["mystic"] = run
+            db[chat_id][0]["markup"] = "tg"
+            await mystic.delete()
