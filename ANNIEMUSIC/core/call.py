@@ -14,9 +14,9 @@ from pytgcalls.types import AudioQuality, ChatUpdate, MediaStream, StreamEnded, 
 
 import config
 from strings import get_string
-from AnnieXMedia import LOGGER, YouTube, app
-from AnnieXMedia.misc import db
-from AnnieXMedia.utils.database import (
+from ANNIEMUSIC import LOGGER, YouTube, app
+from ANNIEMUSIC.misc import db
+from ANNIEMUSIC.utils.database import (
     add_active_chat,
     add_active_video_chat,
     get_lang,
@@ -28,12 +28,12 @@ from AnnieXMedia.utils.database import (
     remove_active_video_chat,
     set_loop,
 )
-from AnnieXMedia.utils.exceptions import AssistantErr
-from AnnieXMedia.utils.formatters import check_duration, seconds_to_min, speed_converter
-from AnnieXMedia.utils.inline.play import stream_markup
-from AnnieXMedia.utils.stream.autoclear import auto_clean
-from AnnieXMedia.utils.thumbnails import get_thumb
-from AnnieXMedia.utils.errors import capture_internal_err
+from ANNIEMUSIC.utils.exceptions import AssistantErr
+from ANNIEMUSIC.utils.formatters import check_duration, seconds_to_min, speed_converter
+from ANNIEMUSIC.utils.inline.play import stream_markup
+from ANNIEMUSIC.utils.stream.autoclear import auto_clean
+from ANNIEMUSIC.utils.thumbnails import get_thumb
+from ANNIEMUSIC.utils.errors import capture_internal_err
 
 autoend = {}
 counter = {}
