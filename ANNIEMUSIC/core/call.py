@@ -1,21 +1,22 @@
+# Authored By Certified Coders © 2025
 import asyncio
 import os
 from datetime import datetime, timedelta
 from typing import Union
 
-from ntgcalls import TelegramServerError
+from ntgcalls import TelegramServerError, ConnectionNotFound
 from pyrogram import Client
 from pyrogram.errors import FloodWait, ChatAdminRequired
 from pyrogram.types import InlineKeyboardMarkup
 from pytgcalls import PyTgCalls
-from pytgcalls.exceptions import NoActiveGroupCall
+from pytgcalls.exceptions import NoActiveGroupCall, NoAudioSourceFound, NoVideoSourceFound
 from pytgcalls.types import AudioQuality, ChatUpdate, MediaStream, StreamEnded, Update, VideoQuality
 
 import config
 from strings import get_string
-from ANNIEMUSIC import LOGGER, YouTube, app
-from ANNIEMUSIC.misc import db
-from ANNIEMUSIC.utils.database import (
+from AnnieXMedia import LOGGER, YouTube, app
+from AnnieXMedia.misc import db
+from AnnieXMedia.utils.database import (
     add_active_chat,
     add_active_video_chat,
     get_lang,
@@ -27,25 +28,34 @@ from ANNIEMUSIC.utils.database import (
     remove_active_video_chat,
     set_loop,
 )
-from ANNIEMUSIC.utils.exceptions import AssistantErr
-from ANNIEMUSIC.utils.formatters import check_duration, seconds_to_min, speed_converter
-from ANNIEMUSIC.utils.inline.play import stream_markup
-from ANNIEMUSIC.utils.stream.autoclear import auto_clean
-from ANNIEMUSIC.utils.thumbnails import get_thumb
-from ANNIEMUSIC.utils.errors import capture_internal_err, send_large_error
+from AnnieXMedia.utils.exceptions import AssistantErr
+from AnnieXMedia.utils.formatters import check_duration, seconds_to_min, speed_converter
+from AnnieXMedia.utils.inline.play import stream_markup
+from AnnieXMedia.utils.stream.autoclear import auto_clean
+from AnnieXMedia.utils.thumbnails import get_thumb
+from AnnieXMedia.utils.errors import capture_internal_err
 
 autoend = {}
 counter = {}
 
 def dynamic_media_stream(path: str, video: bool = False, ffmpeg_params: str = None) -> MediaStream:
-    return MediaStream(
-        audio_path=path,
-        media_path=path,
-        audio_parameters=AudioQuality.MEDIUM if video else AudioQuality.STUDIO,
-        video_parameters=VideoQuality.HD_720p if video else VideoQuality.SD_360p,
-        video_flags=(MediaStream.Flags.AUTO_DETECT if video else MediaStream.Flags.IGNORE),
-        ffmpeg_parameters=ffmpeg_params,
-    )
+    if video:
+        return MediaStream(
+            media_path=path,
+            audio_parameters=AudioQuality.HIGH,
+            video_parameters=VideoQuality.HD_720p,
+            audio_flags=MediaStream.Flags.REQUIRED,
+            video_flags=MediaStream.Flags.REQUIRED,
+            ffmpeg_parameters=ffmpeg_params,
+        )
+    else:
+        return MediaStream(
+            media_path=path,
+            audio_parameters=AudioQuality.HIGH,
+            audio_flags=MediaStream.Flags.REQUIRED,
+            video_flags=MediaStream.Flags.IGNORE,
+            ffmpeg_parameters=ffmpeg_params,
+        )
 
 async def _clear_(chat_id: int) -> None:
     popped = db.pop(chat_id, None)
@@ -59,12 +69,12 @@ async def _clear_(chat_id: int) -> None:
 class Call:
     def __init__(self):
         self.userbot1 = Client(
-            "AnnieXAssis1", config.API_ID, config.API_HASH, session_string=config.STRING1
+            "AchaXAssis1", config.API_ID, config.API_HASH, session_string=config.STRING1
         ) if config.STRING1 else None
         self.one = PyTgCalls(self.userbot1) if self.userbot1 else None
 
         self.userbot2 = Client(
-            "AnnieXAssis2", config.API_ID, config.API_HASH, session_string=config.STRING2
+            "AchaXAssis2", config.API_ID, config.API_HASH, session_string=config.STRING2
         ) if config.STRING2 else None
         self.two = PyTgCalls(self.userbot2) if self.userbot2 else None
 
@@ -175,8 +185,12 @@ class Call:
 
         if not os.path.exists(out):
             vs = str(2.0 / float(speed))
-            cmd = f"ffmpeg -i {file_path} -filter:v setpts={vs}*PTS -filter:a atempo={speed} {out}"
-            proc = await asyncio.create_subprocess_shell(cmd, stdin=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+            cmd = f'ffmpeg -i "{file_path}" -filter:v "setpts={vs}*PTS" -filter:a atempo={speed} -y "{out}"'
+            proc = await asyncio.create_subprocess_shell(
+                cmd,
+                stdin=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
             await proc.communicate()
 
         dur = int(await asyncio.get_event_loop().run_in_executor(None, check_duration, out))
@@ -188,18 +202,17 @@ class Call:
 
         if chat_id in db and db[chat_id] and db[chat_id][0].get("file") == file_path:
             await assistant.play(chat_id, stream)
+            db[chat_id][0].update({
+                "played": con_seconds,
+                "dur": duration_min,
+                "seconds": dur,
+                "speed_path": out,
+                "speed": speed,
+                "old_dur": db[chat_id][0].get("dur"),
+                "old_second": db[chat_id][0].get("seconds"),
+            })
         else:
             raise AssistantErr("Stream mismatch during speedup.")
-
-        db[chat_id][0].update({
-            "played": con_seconds,
-            "dur": duration_min,
-            "seconds": dur,
-            "speed_path": out,
-            "speed": speed,
-            "old_dur": db[chat_id][0].get("dur"),
-            "old_second": db[chat_id][0].get("seconds"),
-        })
 
 
     @capture_internal_err
@@ -232,7 +245,11 @@ class Call:
             await assistant.play(chat_id, stream)
         except (NoActiveGroupCall, ChatAdminRequired):
             raise AssistantErr(_["call_8"])
-        except TelegramServerError:
+        except NoAudioSourceFound:
+            raise AssistantErr(_["call_11"])
+        except NoVideoSourceFound:
+            raise AssistantErr(_["call_12"])
+        except (ConnectionNotFound, TelegramServerError):
             raise AssistantErr(_["call_10"])
         except Exception as e:
             raise AssistantErr(
@@ -488,37 +505,22 @@ class Call:
             ChatUpdate.Status.KICKED
             | ChatUpdate.Status.LEFT_GROUP
             | ChatUpdate.Status.CLOSED_VOICE_CHAT
-            | ChatUpdate.Status.DISCARDED_CALL
-            | ChatUpdate.Status.BUSY_CALL
         )
 
         async def unified_update_handler(client, update: Update) -> None:
-            try:
-                if isinstance(update, ChatUpdate):
-                    status = update.status
-                    if (status & ChatUpdate.Status.LEFT_CALL) or (status & CRITICAL):
-                        await self.stop_stream(update.chat_id)
-                        return
-
-                elif isinstance(update, StreamEnded):
-                    if update.stream_type == StreamEnded.Type.AUDIO:
-                        assistant = await group_assistant(self, update.chat_id)
-                        await self.play(assistant, update.chat_id)
-
-            except Exception:
-                import sys, traceback
-                exc_type, exc_obj, exc_tb = sys.exc_info()
-                full_trace = "".join(traceback.format_exception(exc_type, exc_obj, exc_tb))
-                caption = (
-                    f"🚨 <b>Stream Update Error</b>\n"
-                    f"📍 <b>Update Type:</b> <code>{type(update).__name__}</code>\n"
-                    f"📍 <b>Error Type:</b> <code>{exc_type.__name__}</code>"
-                )
-                filename = f"update_error_{getattr(update, 'chat_id', 'unknown')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-                await send_large_error(full_trace, caption, filename)
+            if isinstance(update, StreamEnded):
+                if update.stream_type == StreamEnded.Type.AUDIO:
+                    assistant = await group_assistant(self, update.chat_id)
+                    await self.play(assistant, update.chat_id)
+            
+            elif isinstance(update, ChatUpdate):
+                status = update.status
+                if (status & ChatUpdate.Status.LEFT_CALL) or (status & CRITICAL):
+                    await self.stop_stream(update.chat_id)
+                    return
 
         for assistant in assistants:
             assistant.on_update()(unified_update_handler)
 
 
-JARVIS = Call()
+StreamController = Call()
