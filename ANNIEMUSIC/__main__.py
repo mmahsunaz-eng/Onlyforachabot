@@ -1,5 +1,7 @@
+import os
 import asyncio
 import importlib
+from datetime import datetime
 
 from pyrogram import idle
 from pytgcalls.exceptions import NoActiveGroupCall
@@ -11,7 +13,8 @@ from ANNIEMUSIC.misc import sudo
 from ANNIEMUSIC.plugins import ALL_MODULES
 from ANNIEMUSIC.utils.database import get_banned_users, get_gbanned
 from ANNIEMUSIC.utils.cookie_handler import fetch_and_store_cookies
-from config import BANNED_USERS
+from config import_store_cookie
+JARVIS = StreamController()
 
 # 🧩 MongoDB Setup
 from motor.motor_asyncio import AsyncIOMotorClient
