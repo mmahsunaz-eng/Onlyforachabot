@@ -14,7 +14,7 @@ from ANNIEMUSIC.plugins import ALL_MODULES
 from ANNIEMUSIC.utils.database import get_banned_users, get_gbanned
 from ANNIEMUSIC.utils.cookie_handler import fetch_and_store_cookies
 
-JARVIS = StreamController()
+JARVIS = StreamController
 
 # 🧩 MongoDB Setup
 from motor.motor_asyncio import AsyncIOMotorClient
