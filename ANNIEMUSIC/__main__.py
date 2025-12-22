@@ -13,7 +13,8 @@ from ANNIEMUSIC.misc import sudo
 from ANNIEMUSIC.plugins import ALL_MODULES
 from ANNIEMUSIC.utils.database import get_banned_users, get_gbanned
 from ANNIEMUSIC.utils.cookie_handler import fetch_and_store_cookies
-from config import_store_cookie
+from config import store_cookie
+
 JARVIS = StreamController()
 
 # 🧩 MongoDB Setup
